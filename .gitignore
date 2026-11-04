@@ -1,0 +1,5 @@
+.env
+venv/
+*.db
+app/static/uploads/
+__pycache__/
