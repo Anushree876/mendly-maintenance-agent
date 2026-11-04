@@ -3,3 +3,4 @@ venv/
 *.db
 app/static/uploads/
 __pycache__/
+sample.jpg
