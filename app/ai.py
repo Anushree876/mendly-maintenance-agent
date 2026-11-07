@@ -107,6 +107,30 @@ summary (one short sentence describing the problem)."""
         return _fallback(message), False
 
 
+def verify_fix(before_path, after_path, summary):
+    """Compare before and after photos. Returns (result_dict, used_ai)."""
+    prompt = f"""You check whether a property repair was completed.
+The first image is BEFORE the repair, the second image is AFTER.
+Original problem: {summary}
+Decide if the problem is clearly fixed in the AFTER photo.
+Reply with JSON only, with exactly these keys:
+fixed (true or false),
+confidence (number from 0 to 1),
+reason (one short sentence)."""
+
+    data = call_llm(prompt, [before_path, after_path])
+    try:
+        result = {
+            "fixed": bool(data["fixed"]),
+            "confidence": max(0.0, min(1.0, float(data["confidence"]))),
+            "reason": str(data.get("reason", ""))[:200],
+        }
+        return result, True
+    except (TypeError, ValueError, KeyError):
+        return {"fixed": False, "confidence": 0.0,
+                "reason": "AI was unavailable, so the manager must review."}, False
+
+
 def compare_quotes(issue, candidates, avg):
     """candidates: list of dicts with id, vendor_name, rating, price, earliest_date, notes.
     Returns (best_quote_id, reason, used_ai). Python rules already removed flagged quotes."""

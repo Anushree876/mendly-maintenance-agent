@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image
 
-from app import agent, db
+from app import agent, db, paypal
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -167,10 +167,20 @@ def manager_issue(request: Request, issue_id: int):
         "SELECT * FROM events WHERE issue_id = ? ORDER BY id", (issue_id,)).fetchall()]
     conn.close()
     avg = db.get_avg_price(issue["repair_type"])
+    conn = db.get_conn()
+    pay_row = conn.execute(
+        """SELECT p.*, v.name AS vendor_name FROM payments p
+           JOIN vendors v ON v.id = p.vendor_id
+           WHERE p.issue_id = ? AND p.paypal_status = 'COMPLETED'
+           ORDER BY p.id DESC LIMIT 1""",
+        (issue_id,),
+    ).fetchone()
+    conn.close()
     return templates.TemplateResponse(
         request, "manager_issue.html",
         {"issue": issue, "property": dict(prop), "quotes": quotes,
-         "events": events, "avg": avg, "settings": db.get_settings()},
+         "events": events, "avg": avg, "settings": db.get_settings(),
+         "payment": dict(pay_row) if pay_row else None},
     )
 
 
@@ -197,4 +207,154 @@ def manager_reject(issue_id: int):
     if not issue or issue["status"] != db.S_NEEDS_MANAGER:
         raise HTTPException(400, "This issue is not waiting for approval.")
     agent.reject_issue(issue_id, "Rejected by the manager")
+    return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
+
+@app.post("/v/{token}/done")
+def vendor_done(token: str, after_photo: UploadFile = File(...)):
+    quote = get_quote_by_token(token)
+    if not quote:
+        raise HTTPException(404, "This link is not valid.")
+    issue = db.get_issue(quote["issue_id"])
+    if quote["status"] != "accepted" or issue["status"] != db.S_SCHEDULED:
+        raise HTTPException(400, "This job is not open for a completion photo.")
+    try:
+        name = save_photo(after_photo)
+    except Exception:
+        raise HTTPException(400, "Could not read that image. Please upload a JPG or PNG.")
+
+    conn = db.get_conn()
+    conn.execute("UPDATE issues SET after_photo_path = ? WHERE id = ?", (name, issue["id"]))
+    conn.commit()
+    conn.close()
+    db.add_event(issue["id"], quote["vendor_name"], "Completion photo uploaded", "")
+    db.set_status(issue["id"], db.S_WORK_SUBMITTED, actor=quote["vendor_name"],
+                  reason="Work marked as done")
+    return RedirectResponse(f"/v/{token}", status_code=303)
+
+
+@app.post("/status/{issue_id}/confirm")
+def tenant_confirm(issue_id: int, answer: str = Form(...)):
+    issue = db.get_issue(issue_id)
+    if not issue:
+        raise HTTPException(404, "Issue not found")
+    if issue["status"] != db.S_WORK_SUBMITTED:
+        return RedirectResponse(f"/status/{issue_id}", status_code=303)
+    fixed = 1 if answer == "yes" else 0
+    conn = db.get_conn()
+    conn.execute("UPDATE issues SET tenant_confirmed = ? WHERE id = ?", (fixed, issue_id))
+    conn.commit()
+    conn.close()
+    db.add_event(issue_id, "tenant", "Tenant answered", "Fixed" if fixed else "Still broken")
+    agent.after_work_submitted(issue_id)
+    return RedirectResponse(f"/status/{issue_id}", status_code=303)
+
+
+@app.post("/manager/issue/{issue_id}/verify")
+def manager_verify(issue_id: int):
+    issue = db.get_issue(issue_id)
+    if not issue or issue["status"] != db.S_DISPUTED:
+        raise HTTPException(400, "This issue is not in dispute.")
+    agent.mark_verified(issue_id, "manager", "Manager overrode the dispute")
+    return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
+
+
+@app.post("/manager/issue/{issue_id}/redo")
+def manager_redo(issue_id: int):
+    issue = db.get_issue(issue_id)
+    if not issue or issue["status"] != db.S_DISPUTED:
+        raise HTTPException(400, "This issue is not in dispute.")
+    agent.send_back_to_vendor(issue_id)
+    return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
+
+@app.post("/manager/issue/{issue_id}/pay")
+def manager_pay(issue_id: int):
+    issue = db.get_issue(issue_id)
+    if not issue or issue["status"] != db.S_READY_TO_PAY:
+        raise HTTPException(400, "This issue is not ready to pay.")
+
+    conn = db.get_conn()
+    q = conn.execute(
+        """SELECT q.price, q.vendor_id, v.name AS vendor_name FROM quotes q
+           JOIN vendors v ON v.id = q.vendor_id
+           WHERE q.issue_id = ? AND q.status = 'accepted'""",
+        (issue_id,),
+    ).fetchone()
+    attempts = conn.execute(
+        "SELECT COUNT(*) AS c FROM payments WHERE issue_id = ? AND paypal_order_id IS NOT NULL",
+        (issue_id,),
+    ).fetchone()["c"]
+    conn.close()
+    if not q:
+        raise HTTPException(400, "No selected vendor for this issue.")
+
+    base_url = os.getenv("BASE_URL", "http://127.0.0.1:8000")
+    try:
+        order_id, approve_url = paypal.create_order(
+            amount=q["price"],
+            issue_id=issue_id,
+            request_id=f"mendly-issue-{issue_id}-{attempts + 1}",
+            return_url=f"{base_url}/paypal/return?issue_id={issue_id}",
+            cancel_url=f"{base_url}/paypal/cancel?issue_id={issue_id}",
+            description=f"Mendly job #{issue_id}: {q['vendor_name']}",
+        )
+    except Exception as e:
+        db.add_event(issue_id, "paypal", "Could not start payment", str(e)[:150])
+        raise HTTPException(502, "PayPal did not accept the request. Please try again.")
+
+    conn = db.get_conn()
+    conn.execute(
+        """INSERT INTO payments (issue_id, vendor_id, amount, paypal_order_id, paypal_status, created_at)
+           VALUES (?,?,?,?,?,?)""",
+        (issue_id, q["vendor_id"], q["price"], order_id, "CREATED", db.now()),
+    )
+    conn.commit()
+    conn.close()
+    db.add_event(issue_id, "manager", f"Approved payment of ${q['price']:.2f} to {q['vendor_name']}",
+                 f"PayPal order {order_id} created")
+    return RedirectResponse(approve_url, status_code=303)
+
+
+@app.get("/paypal/return")
+def paypal_return(issue_id: int, token: str):
+    issue = db.get_issue(issue_id)
+    if not issue:
+        raise HTTPException(404, "Issue not found")
+    if issue["status"] == db.S_PAID:
+        return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
+
+    conn = db.get_conn()
+    row = conn.execute(
+        "SELECT id FROM payments WHERE issue_id = ? AND paypal_order_id = ?",
+        (issue_id, token),
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(400, "This payment does not belong to the issue.")
+
+    status_code, data = paypal.capture_order(token)
+    if status_code in (200, 201) and data.get("status") == "COMPLETED":
+        agent.mark_paid(issue_id, token, paypal.capture_id_from(data))
+    else:
+        # It may already be captured (for example, the page was refreshed)
+        try:
+            order = paypal.get_order(token)
+        except Exception:
+            order = {}
+        if order.get("status") == "COMPLETED":
+            agent.mark_paid(issue_id, token, paypal.capture_id_from(order))
+        else:
+            conn = db.get_conn()
+            conn.execute(
+                "UPDATE payments SET paypal_status = 'FAILED' WHERE issue_id = ? AND paypal_order_id = ?",
+                (issue_id, token),
+            )
+            conn.commit()
+            conn.close()
+            db.add_event(issue_id, "paypal", "Payment was not completed", str(data)[:150])
+    return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
+
+
+@app.get("/paypal/cancel")
+def paypal_cancel(issue_id: int):
+    db.add_event(issue_id, "manager", "Payment cancelled", "Left PayPal without paying")
     return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)

@@ -47,7 +47,21 @@
 </div>
 {% endif %}
 
-<div class="bg-slate-100 border border-dashed rounded-xl p-4 text-sm text-slate-400">
-  Upload completion photo (available after the job is confirmed)
+{% if quote.status == 'accepted' and issue.status == 'Scheduled' %}
+<form method="post" action="/v/{{ quote.token }}/done" enctype="multipart/form-data"
+      class="bg-white rounded-xl border p-4 space-y-3"
+      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Uploading...';">
+  <h2 class="font-medium">Job done? Upload a completion photo</h2>
+  <input type="file" name="after_photo" accept="image/*" required class="w-full border rounded-lg p-2 bg-white">
+  <button class="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Mark as done</button>
+</form>
+{% elif quote.status == 'accepted' %}
+<div class="bg-slate-100 border rounded-xl p-4 text-sm text-slate-600">
+  Completion photo submitted. Current status: {{ issue.status }}.
 </div>
+{% else %}
+<div class="bg-slate-100 border border-dashed rounded-xl p-4 text-sm text-slate-400">
+  Upload completion photo (only for the selected vendor)
+</div>
+{% endif %}
 {% endblock %}

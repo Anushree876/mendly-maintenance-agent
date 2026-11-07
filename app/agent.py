@@ -206,3 +206,71 @@ def reject_issue(issue_id, reason):
     conn.commit()
     conn.close()
     db.set_status(issue_id, db.S_REJECTED, actor="manager", reason=reason)
+
+CONFIDENCE_MIN = 0.7
+
+
+def after_work_submitted(issue_id):
+    """Runs after the tenant answers the 'Is it fixed?' question."""
+    issue = db.get_issue(issue_id)
+    if not issue["tenant_confirmed"]:
+        db.set_status(issue_id, db.S_DISPUTED, actor="tenant",
+                      reason="Tenant says the problem is not fixed")
+        return
+
+    before = os.path.join(UPLOAD_DIR, issue["photo_path"])
+    after = os.path.join(UPLOAD_DIR, issue["after_photo_path"])
+    result, used_ai = ai.verify_fix(before, after, issue["ai_summary"])
+
+    conn = db.get_conn()
+    conn.execute(
+        "UPDATE issues SET verify_confidence = ?, verify_reason = ? WHERE id = ?",
+        (result["confidence"], result["reason"], issue_id),
+    )
+    conn.commit()
+    conn.close()
+    db.add_event(
+        issue_id, "ai" if used_ai else "agent",
+        f"Photo check: {'fixed' if result['fixed'] else 'not clearly fixed'} "
+        f"({result['confidence'] * 100:.0f}% confidence)",
+        result["reason"],
+    )
+
+    if result["fixed"] and result["confidence"] >= CONFIDENCE_MIN:
+        mark_verified(issue_id, "agent", "Tenant confirmed and the photo check passed")
+    else:
+        db.set_status(issue_id, db.S_DISPUTED, actor="agent",
+                      reason="Low confidence or not clearly fixed, so the manager must decide")
+
+
+def mark_verified(issue_id, actor, reason):
+    db.set_status(issue_id, db.S_VERIFIED, actor=actor, reason=reason)
+    db.set_status(issue_id, db.S_READY_TO_PAY, actor="agent",
+                  reason="Waiting for manager approval to pay")
+
+
+def send_back_to_vendor(issue_id):
+    conn = db.get_conn()
+    conn.execute(
+        """UPDATE issues SET after_photo_path = NULL, tenant_confirmed = NULL,
+           verify_confidence = NULL, verify_reason = NULL WHERE id = ?""",
+        (issue_id,),
+    )
+    conn.commit()
+    conn.close()
+    db.set_status(issue_id, db.S_SCHEDULED, actor="manager",
+                  reason="Sent back to the vendor to redo or re-upload")
+
+
+def mark_paid(issue_id, order_id, capture_id):
+    conn = db.get_conn()
+    conn.execute(
+        """UPDATE payments SET paypal_capture_id = ?, paypal_status = 'COMPLETED'
+           WHERE issue_id = ? AND paypal_order_id = ?""",
+        (capture_id, issue_id, order_id),
+    )
+    conn.execute("UPDATE issues SET closed_at = ? WHERE id = ?", (db.now(), issue_id))
+    conn.commit()
+    conn.close()
+    db.add_event(issue_id, "paypal", "Payment captured", f"Order {order_id}, capture {capture_id}")
+    db.set_status(issue_id, db.S_PAID, actor="agent", reason="PayPal payment completed")

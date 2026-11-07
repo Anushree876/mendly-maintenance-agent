@@ -28,6 +28,9 @@
       <span>${{ "%.0f"|format(q.price) }}
         {% if q.flag %}<span class="text-red-600 text-xs">flagged</span>{% endif %}
         <span class="text-xs text-slate-500">{{ q.status }}</span></span>
+      {% if q.status == 'accepted' %}
+        <a class="text-blue-600 underline ml-2" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Open vendor link</a>
+      {% endif %}
     {% endif %}
   </div>
   {% endfor %}
@@ -35,6 +38,21 @@
 {% endif %}
 {% if issue.status == 'Quotes requested' %}
 <script>setTimeout(function () { location.reload(); }, 5000);</script>
+{% endif %}
+{% if issue.after_photo_path %}
+<div class="mb-3">
+  <div class="text-sm font-medium mb-1">After photo from the vendor</div>
+  <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full">
+</div>
+{% endif %}
+{% if issue.status == 'Work submitted' %}
+<div class="bg-white border rounded-xl p-4 mb-3">
+  <div class="font-medium mb-2">Is the issue fixed?</div>
+  <form method="post" action="/status/{{ issue.id }}/confirm" class="flex gap-2">
+    <button name="answer" value="yes" class="flex-1 bg-blue-600 text-white rounded-lg py-2 font-medium">Yes, fixed</button>
+    <button name="answer" value="no" class="flex-1 border border-slate-300 rounded-lg py-2 font-medium">No, still broken</button>
+  </form>
+</div>
 {% endif %}
 <h2 class="font-medium mb-2">Activity</h2>
 <ul class="text-sm space-y-2">
