@@ -1,5 +1,8 @@
+import hashlib
+import hmac
 import os
 import uuid
+from datetime import datetime
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
@@ -358,3 +361,128 @@ def paypal_return(issue_id: int, token: str):
 def paypal_cancel(issue_id: int):
     db.add_event(issue_id, "manager", "Payment cancelled", "Left PayPal without paying")
     return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
+
+
+
+# ---------- Manager login ----------
+
+def _auth_token():
+    pw = os.getenv("MANAGER_PASSWORD", "")
+    return hmac.new(pw.encode(), b"mendly-manager", hashlib.sha256).hexdigest()
+
+
+def is_manager(request: Request):
+    if not os.getenv("MANAGER_PASSWORD"):
+        return False
+    return hmac.compare_digest(request.cookies.get("mendly_auth", ""), _auth_token())
+
+
+@app.middleware("http")
+async def manager_guard(request: Request, call_next):
+    if request.url.path.startswith("/manager") and not is_manager(request):
+        return RedirectResponse("/login", status_code=303)
+    return await call_next(request)
+
+
+@app.get("/login")
+def login_page(request: Request):
+    return templates.TemplateResponse(request, "login.html", {"error": None})
+
+
+@app.post("/login")
+def login_submit(request: Request, password: str = Form(...)):
+    expected = os.getenv("MANAGER_PASSWORD", "")
+    if expected and hmac.compare_digest(password.encode(), expected.encode()):
+        resp = RedirectResponse("/manager", status_code=303)
+        resp.set_cookie(
+            "mendly_auth", _auth_token(), httponly=True, samesite="lax",
+            max_age=60 * 60 * 12,
+            secure=os.getenv("BASE_URL", "").startswith("https"),
+        )
+        return resp
+    return templates.TemplateResponse(
+        request, "login.html", {"error": "Wrong password."}, status_code=401
+    )
+
+
+@app.get("/logout")
+def logout():
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie("mendly_auth")
+    return resp
+
+
+# ---------- Manager dashboard ----------
+
+def dashboard_data():
+    conn = db.get_conn()
+    month = datetime.now().strftime("%Y-%m")
+    spend = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS s FROM payments
+           WHERE paypal_status = 'COMPLETED' AND created_at LIKE ?""",
+        (month + "%",),
+    ).fetchone()["s"]
+
+    rows = conn.execute(
+        """SELECT
+             (SELECT MAX(price) FROM quotes WHERE issue_id = i.id AND flag = 1) AS flagged_price,
+             (SELECT price FROM quotes WHERE issue_id = i.id AND status = 'accepted') AS accepted_price
+           FROM issues i"""
+    ).fetchall()
+    saved = sum(
+        max(0, r["flagged_price"] - r["accepted_price"])
+        for r in rows if r["flagged_price"] and r["accepted_price"]
+    )
+
+    open_count = conn.execute(
+        "SELECT COUNT(*) AS c FROM issues WHERE status NOT IN (?, ?)",
+        (db.S_PAID, db.S_REJECTED),
+    ).fetchone()["c"]
+
+    done = conn.execute(
+        "SELECT created_at, closed_at FROM issues WHERE closed_at IS NOT NULL"
+    ).fetchall()
+    days = [
+        (datetime.fromisoformat(r["closed_at"]) - datetime.fromisoformat(r["created_at"])).total_seconds() / 86400
+        for r in done
+    ]
+    avg_days = sum(days) / len(days) if days else 0
+
+    issues = [dict(r) for r in conn.execute(
+        """SELECT i.id, p.address, i.message, i.repair_type, i.urgency, i.status,
+                  i.created_at, v.name AS vendor,
+                  (SELECT price FROM quotes WHERE issue_id = i.id AND status = 'accepted') AS price
+           FROM issues i
+           JOIN properties p ON p.id = i.property_id
+           LEFT JOIN vendors v ON v.id = i.selected_vendor_id
+           ORDER BY i.id DESC"""
+    ).fetchall()]
+    conn.close()
+    stats = {"spend": spend, "saved": saved, "open": open_count, "avg_days": avg_days}
+    return stats, issues
+
+
+@app.get("/manager")
+def manager_dashboard(request: Request):
+    stats, issues = dashboard_data()
+    return templates.TemplateResponse(
+        request, "manager_dashboard.html",
+        {"stats": stats, "issues": issues, "settings": db.get_settings()},
+    )
+
+
+@app.post("/manager/rules")
+def manager_rules(
+    auto_approve_limit: float = Form(...),
+    max_above_avg_pct: float = Form(...),
+):
+    if not (0 <= auto_approve_limit <= 100000) or not (0 <= max_above_avg_pct <= 500):
+        raise HTTPException(400, "Rule values are out of range.")
+    conn = db.get_conn()
+    conn.execute(
+        "UPDATE settings SET auto_approve_limit = ?, max_above_avg_pct = ? WHERE id = 1",
+        (auto_approve_limit, max_above_avg_pct),
+    )
+    conn.commit()
+    conn.close()
+    return RedirectResponse("/manager#rules", status_code=303)

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mt-16 bg-white border rounded-xl p-6">
+  <h1 class="text-xl font-semibold mb-1">Mendly</h1>
+  <p class="text-sm text-slate-500 mb-4">Property manager sign in</p>
+  {% if error %}
+  <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-2 mb-3">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="/login" class="space-y-3">
+    <input type="password" name="password" required autofocus placeholder="Password"
+           class="w-full border rounded-lg p-2">
+    <button class="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Sign in</button>
+  </form>
+</div>
+{% endblock %}

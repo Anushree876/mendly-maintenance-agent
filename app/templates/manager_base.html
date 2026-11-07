@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Mendly{% endblock %}</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } } };
+  </script>
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans">
+  <div class="flex min-h-screen">
+    <aside class="w-56 shrink-0 bg-white border-r border-slate-200 hidden md:flex flex-col p-4">
+      <div class="flex items-center gap-2 mb-6 px-2">
+        <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">M</div>
+        <span class="text-lg font-semibold">Mendly</span>
+      </div>
+      <nav class="space-y-1 text-sm">
+        <a href="/manager" class="block rounded-lg px-3 py-2 {% if active == 'dashboard' %}bg-blue-50 text-blue-700 font-medium{% else %}text-slate-600 hover:bg-slate-50{% endif %}">Dashboard</a>
+        <a href="/manager#issues" class="block rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50">Issues</a>
+        <a href="/manager#rules" class="block rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50">Rules</a>
+      </nav>
+      <a href="/logout" class="mt-auto text-sm text-slate-500 hover:text-slate-800 px-3 py-2">Sign out</a>
+    </aside>
+    <div class="flex-1 min-w-0">
+      <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4">
+        <input id="search" type="search" placeholder="Search properties, issues, vendors..."
+               class="w-full max-w-md border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50">
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold">MG</div>
+          <div class="text-xs leading-tight">
+            <div class="font-medium">Maria Garcia</div>
+            <div class="text-slate-500">Property Manager</div>
+          </div>
+        </div>
+      </header>
+      <main class="p-6">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+</body>
+</html>

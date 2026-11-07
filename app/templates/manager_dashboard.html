@@ -1,0 +1,109 @@
+{% extends "manager_base.html" %}
+{% set active = 'dashboard' %}
+{% block title %}Dashboard | Mendly{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/styles/ag-grid.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/styles/ag-theme-alpine.css">
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/dist/ag-grid-community.min.js"></script>
+{% endblock %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Dashboard</h1>
+
+<div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+    <div class="text-xs text-slate-500">Spend this month</div>
+    <div class="text-2xl font-semibold mt-1">${{ "{:,.0f}".format(stats.spend) }}</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+    <div class="text-xs text-slate-500">Saved from flagged quotes</div>
+    <div class="text-2xl font-semibold mt-1">${{ "{:,.0f}".format(stats.saved) }}</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+    <div class="text-xs text-slate-500">Open issues</div>
+    <div class="text-2xl font-semibold mt-1">{{ stats.open }}</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+    <div class="text-xs text-slate-500">Avg days to fix</div>
+    <div class="text-2xl font-semibold mt-1">{{ "%.1f"|format(stats.avg_days) }}</div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+  <section id="issues" class="xl:col-span-2 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+    <h2 class="font-medium mb-3">Issues</h2>
+    <div id="grid" class="ag-theme-alpine" style="height: 440px; width: 100%;"></div>
+  </section>
+
+  <section id="rules" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm h-fit">
+    <h2 class="font-medium mb-3">Spending rules</h2>
+    <form method="post" action="/manager/rules" class="space-y-4 text-sm">
+      <div>
+        <label class="block font-medium mb-1">Auto-approve under ($)</label>
+        <input type="number" name="auto_approve_limit" min="0" step="1" required
+               value="{{ '%.0f'|format(settings.auto_approve_limit) }}"
+               class="w-full border border-slate-200 rounded-lg px-3 py-2">
+        <p class="text-xs text-slate-500 mt-1">Winning quotes at or under this are approved automatically.</p>
+      </div>
+      <div>
+        <label class="block font-medium mb-1">Flag quotes above average by (%)</label>
+        <input type="number" name="max_above_avg_pct" min="0" step="1" required
+               value="{{ '%.0f'|format(settings.max_above_avg_pct) }}"
+               class="w-full border border-slate-200 rounded-lg px-3 py-2">
+        <p class="text-xs text-slate-500 mt-1">Flagged quotes are never picked by the agent.</p>
+      </div>
+      <button class="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Save rules</button>
+    </form>
+  </section>
+</div>
+
+<script>
+  const rows = {{ issues|tojson }};
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  const pill = (text, cls) =>
+    '<span class="inline-block text-xs rounded-full px-2.5 py-0.5 ' + cls + '">' + text + '</span>';
+  const urgencyCls = {
+    high: 'bg-red-100 text-red-700',
+    medium: 'bg-amber-100 text-amber-700',
+    low: 'bg-green-100 text-green-700'
+  };
+  const statusCls = {
+    'New': 'bg-slate-100 text-slate-600',
+    'Analyzed': 'bg-slate-100 text-slate-600',
+    'Quotes requested': 'bg-blue-100 text-blue-700',
+    'Quotes received': 'bg-blue-100 text-blue-700',
+    'Needs manager': 'bg-amber-100 text-amber-700',
+    'Scheduled': 'bg-purple-100 text-purple-700',
+    'Work submitted': 'bg-purple-100 text-purple-700',
+    'Verified': 'bg-teal-100 text-teal-700',
+    'Ready to pay': 'bg-teal-100 text-teal-700',
+    'Disputed': 'bg-red-100 text-red-700',
+    'Paid': 'bg-green-100 text-green-700',
+    'Payment failed': 'bg-red-100 text-red-700',
+    'Rejected': 'bg-slate-100 text-slate-600'
+  };
+  const columns = [
+    { headerName: '#', field: 'id', width: 70 },
+    { headerName: 'Property', field: 'address', flex: 1.2, minWidth: 140 },
+    { headerName: 'Issue', field: 'message', flex: 1.5, minWidth: 160 },
+    { headerName: 'Urgency', field: 'urgency', width: 110,
+      cellRenderer: p => p.value ? pill(cap(p.value), urgencyCls[p.value] || 'bg-slate-100 text-slate-600') : '' },
+    { headerName: 'Vendor', field: 'vendor', flex: 1, minWidth: 130, valueFormatter: p => p.value || '-' },
+    { headerName: 'Quote', field: 'price', width: 100, valueFormatter: p => p.value ? '$' + Math.round(p.value) : '-' },
+    { headerName: 'Status', field: 'status', width: 160,
+      cellRenderer: p => pill(p.value, statusCls[p.value] || 'bg-slate-100 text-slate-600') },
+    { headerName: '', field: 'id', width: 80, sortable: false,
+      cellRenderer: p => '<a class="text-blue-600 font-medium" href="/manager/issue/' + p.value + '">View</a>' }
+  ];
+  const api = agGrid.createGrid(document.getElementById('grid'), {
+    columnDefs: columns,
+    rowData: rows,
+    defaultColDef: { sortable: true, resizable: true },
+    pagination: true,
+    paginationPageSize: 10,
+    rowHeight: 44
+  });
+  document.getElementById('search').addEventListener('input', function (e) {
+    api.setGridOption('quickFilterText', e.target.value);
+  });
+</script>
+{% endblock %}
