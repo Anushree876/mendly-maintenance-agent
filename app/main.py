@@ -87,8 +87,66 @@ def status_page(request: Request, issue_id: int):
     prop = conn.execute("SELECT * FROM properties WHERE id = ?", (issue["property_id"],)).fetchone()
     events = [dict(r) for r in conn.execute(
         "SELECT * FROM events WHERE issue_id = ? ORDER BY id", (issue_id,)).fetchall()]
+    quotes = [dict(r) for r in conn.execute(
+        """SELECT q.*, v.name AS vendor_name, v.is_simulated FROM quotes q
+           JOIN vendors v ON v.id = q.vendor_id WHERE q.issue_id = ? ORDER BY q.id""",
+        (issue_id,)).fetchall()]
     conn.close()
+    base_url = os.getenv("BASE_URL", "http://127.0.0.1:8000")
     return templates.TemplateResponse(
         request, "tenant_status.html",
-        {"issue": issue, "property": dict(prop), "events": events},
+        {"issue": issue, "property": dict(prop), "events": events,
+         "quotes": quotes, "base_url": base_url},
     )
+def get_quote_by_token(token):
+    conn = db.get_conn()
+    row = conn.execute(
+        """SELECT q.*, v.name AS vendor_name FROM quotes q
+           JOIN vendors v ON v.id = q.vendor_id WHERE q.token = ?""",
+        (token,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+@app.get("/v/{token}")
+def vendor_page(request: Request, token: str):
+    quote = get_quote_by_token(token)
+    if not quote:
+        raise HTTPException(404, "This link is not valid.")
+    issue = db.get_issue(quote["issue_id"])
+    conn = db.get_conn()
+    prop = conn.execute("SELECT * FROM properties WHERE id = ?", (issue["property_id"],)).fetchone()
+    conn.close()
+    return templates.TemplateResponse(
+        request, "vendor_issue.html",
+        {"quote": quote, "issue": issue, "property": dict(prop)},
+    )
+
+
+@app.post("/v/{token}/quote")
+def vendor_quote(
+    token: str,
+    price: float = Form(...),
+    earliest_date: str = Form(...),
+    notes: str = Form(""),
+):
+    quote = get_quote_by_token(token)
+    if not quote:
+        raise HTTPException(404, "This link is not valid.")
+    if quote["status"] != "invited":
+        return RedirectResponse(f"/v/{token}", status_code=303)
+    if price <= 0 or price > 100000:
+        raise HTTPException(400, "Please enter a valid price.")
+
+    conn = db.get_conn()
+    conn.execute(
+        """UPDATE quotes SET price = ?, earliest_date = ?, notes = ?, status = 'submitted'
+           WHERE token = ?""",
+        (price, earliest_date, notes[:500], token),
+    )
+    conn.commit()
+    conn.close()
+    db.add_event(quote["issue_id"], quote["vendor_name"], "Quote submitted", f"${price:.0f}")
+    agent.check_all_quotes_in(quote["issue_id"])
+    return RedirectResponse(f"/v/{token}", status_code=303)

@@ -11,6 +11,28 @@
   <div><b>Estimated cost:</b> ${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}</div>
   <div><b>AI summary:</b> {{ issue.ai_summary }}</div>
 </div>
+{% if quotes %}
+<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 text-sm">
+  <div class="font-medium mb-2">Vendor quotes (dev view, removed later)</div>
+  {% for q in quotes %}
+  <div class="flex justify-between items-center py-1 border-b border-amber-100">
+    <span>{{ q.vendor_name }}{% if not q.is_simulated %} (real){% endif %}</span>
+    {% if q.status == 'invited' %}
+      {% if not q.is_simulated %}
+        <a class="text-blue-600 underline" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Open vendor link</a>
+      {% else %}
+        <span class="text-slate-400">waiting...</span>
+      {% endif %}
+    {% else %}
+      <span>${{ "%.0f"|format(q.price) }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% if issue.status == 'Quotes requested' %}
+<script>setTimeout(function () { location.reload(); }, 5000);</script>
+{% endif %}
 <h2 class="font-medium mb-2">Activity</h2>
 <ul class="text-sm space-y-2">
   {% for e in events %}

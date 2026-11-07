@@ -33,6 +33,9 @@ def run():
         ("BrightFix Electric", "electrical", "book@brightfix.example", "brightfix@example.com", 4.8, 1),
         ("CoolRight HVAC", "hvac", "service@coolright.example", "coolright@example.com", 4.4, 1),
         ("Handy Hands Maintenance", "general", "team@handyhands.example", "handyhands@example.com", 4.3, 1),
+        ("Spark Electric Co", "electrical", "jobs@sparkelectric.example", "spark@example.com", 4.5, 1),
+        ("Frost HVAC Pros", "hvac", "book@frosthvac.example", "frost@example.com", 4.6, 1),
+        ("FixRight Handyman", "general", "hello@fixright.example", "fixright@example.com", 4.4, 1),
     ]
     for v in vendors:
         c.execute(
