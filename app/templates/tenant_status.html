@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Request #{{ issue.id }}</h1>
+<p class="text-sm text-slate-500 mb-3">{{ property.address }}</p>
+<span class="inline-block text-xs bg-blue-100 text-blue-700 rounded-full px-3 py-1 mb-3">{{ issue.status }}</span>
+<img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg mb-3 w-full">
+<div class="bg-white rounded-lg border p-3 mb-3 text-sm space-y-1">
+  <div><b>Message:</b> {{ issue.message }}</div>
+  <div><b>Type:</b> {{ issue.repair_type }}</div>
+  <div><b>Urgency:</b> {{ issue.urgency }}</div>
+  <div><b>Estimated cost:</b> ${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}</div>
+  <div><b>AI summary:</b> {{ issue.ai_summary }}</div>
+</div>
+<h2 class="font-medium mb-2">Activity</h2>
+<ul class="text-sm space-y-2">
+  {% for e in events %}
+  <li class="bg-white border rounded-lg p-2">
+    <div class="font-medium">{{ e.action }}</div>
+    <div class="text-slate-500">{{ e.reason }}</div>
+    <div class="text-xs text-slate-400">{{ e.created_at }}</div>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

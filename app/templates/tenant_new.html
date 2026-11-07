@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Report a problem</h1>
+<p class="text-sm text-slate-500 mb-4">{{ property.address }}</p>
+<form method="post" enctype="multipart/form-data" class="space-y-4">
+  <input name="tenant_name" placeholder="Your name" class="w-full border rounded-lg p-2">
+  <input type="file" name="photo" accept="image/*" required class="w-full border rounded-lg p-2 bg-white">
+  <textarea name="message" required rows="4" placeholder="Describe the issue"
+            class="w-full border rounded-lg p-2"></textarea>
+  <button class="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Submit request</button>
+</form>
+{% endblock %}
