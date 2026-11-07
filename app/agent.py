@@ -93,15 +93,116 @@ def _simulate_quotes(issue_id):
         db.add_event(issue_id, row["name"], "Quote submitted", f"${price}")
         check_all_quotes_in(issue_id)
 
+_lock = threading.Lock()
+
 
 def check_all_quotes_in(issue_id):
-    conn = db.get_conn()
-    pending = conn.execute(
-        "SELECT COUNT(*) AS c FROM quotes WHERE issue_id = ? AND status = 'invited'",
-        (issue_id,),
-    ).fetchone()["c"]
-    conn.close()
-    issue = db.get_issue(issue_id)
-    if pending == 0 and issue["status"] == db.S_QUOTES_REQUESTED:
+    with _lock:
+        conn = db.get_conn()
+        pending = conn.execute(
+            "SELECT COUNT(*) AS c FROM quotes WHERE issue_id = ? AND status = 'invited'",
+            (issue_id,),
+        ).fetchone()["c"]
+        conn.close()
+        issue = db.get_issue(issue_id)
+        if not (pending == 0 and issue["status"] == db.S_QUOTES_REQUESTED):
+            return
         db.set_status(issue_id, db.S_QUOTES_RECEIVED, actor="agent",
                       reason="All invited vendors responded")
+    evaluate_quotes(issue_id)
+
+
+def evaluate_quotes(issue_id):
+    issue = db.get_issue(issue_id)
+    settings = db.get_settings()
+    limit = settings["auto_approve_limit"]
+    max_pct = settings["max_above_avg_pct"]
+
+    conn = db.get_conn()
+    rows = conn.execute(
+        """SELECT q.*, v.name AS vendor_name, v.rating AS rating FROM quotes q
+           JOIN vendors v ON v.id = q.vendor_id
+           WHERE q.issue_id = ? AND q.status = 'submitted' ORDER BY q.id""",
+        (issue_id,),
+    ).fetchall()
+    quotes = [dict(r) for r in rows]
+    if not quotes:
+        conn.close()
+        db.set_status(issue_id, db.S_NEEDS_MANAGER, actor="agent", reason="No quotes received")
+        return
+
+    avg = db.get_avg_price(issue["repair_type"]) or (sum(q["price"] for q in quotes) / len(quotes))
+
+    # Rule check in plain Python: flag quotes too far above the usual price
+    candidates = []
+    flagged_events = []
+    for q in quotes:
+        pct = (q["price"] / avg - 1) * 100
+        if pct > max_pct:
+            reason = f"{pct:.0f}% above the usual ${avg:.0f}"
+            conn.execute("UPDATE quotes SET flag = 1, flag_reason = ? WHERE id = ?", (reason, q["id"]))
+            flagged_events.append(f"{q['vendor_name']}: ${q['price']:.0f} is {reason}")
+        else:
+            candidates.append(q)
+    conn.commit()
+    conn.close()
+    for text in flagged_events:
+        db.add_event(issue_id, "agent", "Quote flagged", text)
+
+    if not candidates:
+        db.set_status(issue_id, db.S_NEEDS_MANAGER, actor="agent",
+                      reason="All quotes are above the price rule")
+        return
+
+    best_id, why, used_ai = ai.compare_quotes(issue, candidates, avg)
+    best = next(q for q in candidates if q["id"] == best_id)
+
+    conn = db.get_conn()
+    conn.execute("UPDATE quotes SET status = 'recommended' WHERE id = ?", (best_id,))
+    conn.commit()
+    conn.close()
+    db.add_event(issue_id, "ai" if used_ai else "agent",
+                 f"Recommended {best['vendor_name']} (${best['price']:.0f})", why)
+
+    if best["price"] <= limit:
+        select_vendor(issue_id, best_id, "agent",
+                      f"${best['price']:.0f} is under the ${limit:.0f} auto-approve limit")
+    else:
+        db.set_status(issue_id, db.S_NEEDS_MANAGER, actor="agent",
+                      reason=f"${best['price']:.0f} is above the ${limit:.0f} limit, manager must approve")
+
+
+def select_vendor(issue_id, quote_id, actor, reason):
+    conn = db.get_conn()
+    q = conn.execute(
+        """SELECT q.*, v.name AS vendor_name FROM quotes q
+           JOIN vendors v ON v.id = q.vendor_id WHERE q.id = ?""",
+        (quote_id,),
+    ).fetchone()
+    conn.execute("UPDATE quotes SET status = 'accepted' WHERE id = ?", (quote_id,))
+    conn.execute(
+        """UPDATE quotes SET status = 'declined'
+           WHERE issue_id = ? AND id != ? AND status IN ('submitted','recommended')""",
+        (issue_id, quote_id),
+    )
+    conn.execute(
+        "UPDATE quotes SET status = 'closed' WHERE issue_id = ? AND id != ? AND status = 'invited'",
+        (issue_id, quote_id),
+    )
+    conn.execute("UPDATE issues SET selected_vendor_id = ? WHERE id = ?", (q["vendor_id"], issue_id))
+    conn.commit()
+    conn.close()
+    db.add_event(issue_id, actor, f"Approved {q['vendor_name']} at ${q['price']:.0f}", reason)
+    db.add_event(issue_id, "agent", "Other vendors told: not selected", "Their links are now closed")
+    db.set_status(issue_id, db.S_SCHEDULED, actor=actor, reason=f"{q['vendor_name']} booked")
+
+
+def reject_issue(issue_id, reason):
+    conn = db.get_conn()
+    conn.execute(
+        "UPDATE quotes SET status = 'closed' WHERE issue_id = ? AND status != 'accepted'",
+        (issue_id,),
+    )
+    conn.commit()
+    conn.close()
+    db.set_status(issue_id, db.S_REJECTED, actor="manager", reason=reason)

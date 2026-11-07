@@ -105,3 +105,32 @@ summary (one short sentence describing the problem)."""
         return result, True
     except (TypeError, ValueError):
         return _fallback(message), False
+
+
+def compare_quotes(issue, candidates, avg):
+    """candidates: list of dicts with id, vendor_name, rating, price, earliest_date, notes.
+    Returns (best_quote_id, reason, used_ai). Python rules already removed flagged quotes."""
+    fallback = min(candidates, key=lambda q: (q["price"], -(q["rating"] or 0)))
+    fallback_result = (fallback["id"], "Lowest price among quotes within the average range.", False)
+
+    lines = "\n".join(
+        f"- id {q['id']}: {q['vendor_name']}, ${q['price']:.0f}, rating {q['rating']}, "
+        f"earliest {q['earliest_date']}, notes: {q['notes'] or 'none'}"
+        for q in candidates
+    )
+    prompt = f"""You help a property manager pick a repair vendor.
+Job: {issue['repair_type']} - {issue['ai_summary']}
+Usual price for this repair: ${avg:.0f}
+Quotes already checked against price rules:
+{lines}
+Pick the best value (price, rating, and how soon they can start).
+Reply with JSON only: {{"best_quote_id": <number>, "reason": "<one short sentence>"}}"""
+
+    data = call_llm(prompt)
+    try:
+        best_id = int(data["best_quote_id"])
+        if best_id in [q["id"] for q in candidates]:
+            return best_id, str(data.get("reason", ""))[:200], True
+    except (TypeError, ValueError, KeyError):
+        pass
+    return fallback_result

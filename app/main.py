@@ -150,3 +150,51 @@ def vendor_quote(
     db.add_event(quote["issue_id"], quote["vendor_name"], "Quote submitted", f"${price:.0f}")
     agent.check_all_quotes_in(quote["issue_id"])
     return RedirectResponse(f"/v/{token}", status_code=303)
+
+@app.get("/manager/issue/{issue_id}")
+def manager_issue(request: Request, issue_id: int):
+    issue = db.get_issue(issue_id)
+    if not issue:
+        raise HTTPException(404, "Issue not found")
+    conn = db.get_conn()
+    prop = conn.execute("SELECT * FROM properties WHERE id = ?", (issue["property_id"],)).fetchone()
+    quotes = [dict(r) for r in conn.execute(
+        """SELECT q.*, v.name AS vendor_name, v.rating AS rating FROM quotes q
+           JOIN vendors v ON v.id = q.vendor_id
+           WHERE q.issue_id = ? AND q.price IS NOT NULL ORDER BY q.price""",
+        (issue_id,)).fetchall()]
+    events = [dict(r) for r in conn.execute(
+        "SELECT * FROM events WHERE issue_id = ? ORDER BY id", (issue_id,)).fetchall()]
+    conn.close()
+    avg = db.get_avg_price(issue["repair_type"])
+    return templates.TemplateResponse(
+        request, "manager_issue.html",
+        {"issue": issue, "property": dict(prop), "quotes": quotes,
+         "events": events, "avg": avg, "settings": db.get_settings()},
+    )
+
+
+@app.post("/manager/issue/{issue_id}/approve")
+def manager_approve(issue_id: int, quote_id: int = Form(...)):
+    issue = db.get_issue(issue_id)
+    if not issue or issue["status"] != db.S_NEEDS_MANAGER:
+        raise HTTPException(400, "This issue is not waiting for approval.")
+    conn = db.get_conn()
+    q = conn.execute(
+        "SELECT id FROM quotes WHERE id = ? AND issue_id = ? AND price IS NOT NULL",
+        (quote_id, issue_id),
+    ).fetchone()
+    conn.close()
+    if not q:
+        raise HTTPException(400, "Quote not found for this issue.")
+    agent.select_vendor(issue_id, quote_id, "manager", "Approved by the manager")
+    return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
+
+
+@app.post("/manager/issue/{issue_id}/reject")
+def manager_reject(issue_id: int):
+    issue = db.get_issue(issue_id)
+    if not issue or issue["status"] != db.S_NEEDS_MANAGER:
+        raise HTTPException(400, "This issue is not waiting for approval.")
+    agent.reject_issue(issue_id, "Rejected by the manager")
+    return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)

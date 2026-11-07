@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="/status/{{ issue.id }}" class="text-xs text-blue-600">Back</a>
+<h1 class="text-xl font-semibold mt-1">Issue #{{ issue.id }}: {{ issue.repair_type|capitalize }}</h1>
+<p class="text-sm text-slate-500 mb-2">{{ property.address }}</p>
+<span class="inline-block text-xs bg-blue-100 text-blue-700 rounded-full px-3 py-1 mb-3">{{ issue.status }}</span>
+
+<img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg mb-3 w-full">
+<div class="bg-white border rounded-lg p-3 text-sm mb-3">
+  <div class="font-medium mb-1">AI summary</div>
+  <div>{{ issue.ai_summary }}</div>
+  <div class="text-slate-500 mt-1">Urgency: {{ issue.urgency }}.
+    Estimated ${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}.
+    {% if avg %}Usual price ${{ "%.0f"|format(avg) }}.{% endif %}</div>
+</div>
+
+<h2 class="font-medium mb-2">Quotes</h2>
+<div class="space-y-2 mb-4">
+  {% for q in quotes %}
+  <div class="bg-white border rounded-lg p-3 text-sm
+       {% if q.status in ('recommended','accepted') %}border-green-500{% endif %}">
+    <div class="flex justify-between">
+      <span class="font-medium">{{ q.vendor_name }}</span>
+      <span class="font-semibold">${{ "%.0f"|format(q.price) }}</span>
+    </div>
+    <div class="text-slate-500">Rating {{ q.rating }}, earliest {{ q.earliest_date }}</div>
+    {% if q.flag %}<div class="text-xs text-red-600 mt-1">Flagged: {{ q.flag_reason }}</div>{% endif %}
+    {% if q.status == 'recommended' %}<div class="text-xs text-green-700 mt-1">Recommended</div>{% endif %}
+    {% if q.status == 'accepted' %}<div class="text-xs text-blue-700 mt-1">Selected</div>{% endif %}
+    {% if issue.status == 'Needs manager' %}
+    <form method="post" action="/manager/issue/{{ issue.id }}/approve" class="mt-2">
+      <input type="hidden" name="quote_id" value="{{ q.id }}">
+      <button class="bg-blue-600 text-white rounded-lg px-3 py-1 text-xs">Approve this quote</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if issue.status == 'Needs manager' %}
+<form method="post" action="/manager/issue/{{ issue.id }}/reject" class="mb-4">
+  <button class="border border-slate-300 rounded-lg px-3 py-1 text-sm">Reject all</button>
+</form>
+{% endif %}
+
+<h2 class="font-medium mb-2">Audit log</h2>
+<ul class="text-sm space-y-2">
+  {% for e in events %}
+  <li class="bg-white border rounded-lg p-2">
+    <div class="font-medium">{{ e.action }}</div>
+    <div class="text-slate-500">{{ e.reason }}</div>
+    <div class="text-xs text-slate-400">{{ e.actor }}, {{ e.created_at }}</div>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

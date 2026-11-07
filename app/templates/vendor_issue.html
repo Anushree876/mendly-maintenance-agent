@@ -30,7 +30,12 @@
   </div>
   <button class="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Submit quote</button>
 </form>
-{% elif quote.status == 'submitted' %}
+{% elif quote.status == 'accepted' %}
+<div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm">
+  <div class="font-medium text-blue-800">You have been selected</div>
+  <div class="text-blue-700 mt-1">${{ "%.0f"|format(quote.price) }}, start {{ quote.earliest_date }}</div>
+</div>
+{% elif quote.status in ('submitted', 'recommended') %}
 <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-sm">
   <div class="font-medium text-green-800">Quote submitted</div>
   <div class="text-green-700 mt-1">${{ "%.0f"|format(quote.price) }}, earliest {{ quote.earliest_date }}</div>
