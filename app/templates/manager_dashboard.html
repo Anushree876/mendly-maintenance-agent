@@ -85,6 +85,7 @@
     { headerName: '#', field: 'id', width: 70 },
     { headerName: 'Property', field: 'address', flex: 1.2, minWidth: 140 },
     { headerName: 'Issue', field: 'message', flex: 1.5, minWidth: 160 },
+    { headerName: 'Type', field: 'repair_type', width: 110, valueFormatter: p => cap(p.value) || '-' },
     { headerName: 'Urgency', field: 'urgency', width: 110,
       cellRenderer: p => p.value ? pill(cap(p.value), urgencyCls[p.value] || 'bg-slate-100 text-slate-600') : '' },
     { headerName: 'Vendor', field: 'vendor', flex: 1, minWidth: 130, valueFormatter: p => p.value || '-' },

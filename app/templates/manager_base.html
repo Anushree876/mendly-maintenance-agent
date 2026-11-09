@@ -39,7 +39,11 @@
           </div>
         </div>
       </header>
-      <main class="p-6">
+      <nav class="md:hidden flex gap-4 px-4 py-2 bg-white border-b border-slate-200 text-sm">
+        <a href="/manager" class="font-medium text-blue-700">Dashboard</a>
+        <a href="/logout" class="text-slate-500">Sign out</a>
+      </nav>
+      <main class="p-4 md:p-6">
         {% block content %}{% endblock %}
       </main>
     </div>

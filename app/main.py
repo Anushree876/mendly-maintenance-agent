@@ -99,7 +99,8 @@ def status_page(request: Request, issue_id: int):
     return templates.TemplateResponse(
         request, "tenant_status.html",
         {"issue": issue, "property": dict(prop), "events": events,
-         "quotes": quotes, "base_url": base_url},
+         "quotes": quotes, "base_url": base_url,
+         "demo": os.getenv("DEMO_MODE", "false").lower() == "true"},
     )
 def get_quote_by_token(token):
     conn = db.get_conn()

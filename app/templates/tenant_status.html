@@ -1,67 +1,157 @@
 {% extends "base.html" %}
+{% block title %}Request #{{ issue.id }} | Mendly{% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-1">Request #{{ issue.id }}</h1>
+{% from "_macros.html" import badge, urgency_badge %}
+{% set s = issue.status %}
+{% set booked_states = ['Scheduled', 'Work submitted', 'Verified', 'Ready to pay', 'Disputed', 'Paid'] %}
+{% set worked_states = ['Verified', 'Ready to pay', 'Paid'] %}
+{% set accepted = quotes | selectattr('status', 'equalto', 'accepted') | list %}
+{% set vendor = accepted[0] if accepted else none %}
+{% set hints = {
+  'New': 'We are reviewing your request',
+  'Analyzed': 'Finding vendors for you',
+  'Quotes requested': 'Collecting quotes from vendors',
+  'Quotes received': 'Comparing quotes',
+  'Needs manager': 'Waiting for manager approval',
+  'Scheduled': 'Your vendor is booked',
+  'Work submitted': 'Please confirm if the issue is fixed',
+  'Disputed': 'The manager is reviewing this request',
+  'Verified': 'Preparing payment',
+  'Ready to pay': 'Payment is waiting for manager approval',
+  'Paid': 'All done. The vendor has been paid.',
+  'Rejected': 'This request was closed by the manager'
+} %}
+{% set steps = [
+  ('Reported', true),
+  ('Reviewed', s != 'New'),
+  ('Vendor booked', s in booked_states),
+  ('Work done', s in worked_states),
+  ('Paid', s == 'Paid')
+] %}
+{% set ns = namespace(current=-1) %}
+{% for label, done in steps %}
+  {% if not done and ns.current == -1 %}{% set ns.current = loop.index0 %}{% endif %}
+{% endfor %}
+
+<div class="flex items-start justify-between gap-3 mb-1">
+  <h1 class="text-lg font-semibold leading-snug">{{ issue.message }}</h1>
+  <span class="text-xs text-slate-400 shrink-0 pt-1">#{{ issue.id }}</span>
+</div>
 <p class="text-sm text-slate-500 mb-3">{{ property.address }}</p>
-<span class="inline-block text-xs bg-blue-100 text-blue-700 rounded-full px-3 py-1 mb-3">{{ issue.status }}</span>
-<img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg mb-3 w-full">
-<div class="bg-white rounded-lg border p-3 mb-3 text-sm space-y-1">
-  <div><b>Message:</b> {{ issue.message }}</div>
-  <div><b>Type:</b> {{ issue.repair_type }}</div>
-  <div><b>Urgency:</b> {{ issue.urgency }}</div>
-  <div><b>Estimated cost:</b> ${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}</div>
-  <div><b>AI summary:</b> {{ issue.ai_summary }}</div>
+<div class="flex items-center gap-2 mb-1">
+  {{ badge(s) }}
+  {{ urgency_badge(issue.urgency) }}
 </div>
-{% if quotes %}
-<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 text-sm">
-  <div class="font-medium mb-2">Vendor quotes (dev view, removed later)</div>
-  <a class="text-blue-600 underline text-xs block mb-2" href="/manager/issue/{{ issue.id }}">Open manager view</a>
-  {% for q in quotes %}
-  <div class="flex justify-between items-center py-1 border-b border-amber-100">
-    <span>{{ q.vendor_name }}{% if not q.is_simulated %} (real){% endif %}</span>
-    {% if q.status == 'invited' %}
-      {% if not q.is_simulated %}
-        <a class="text-blue-600 underline" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Open vendor link</a>
-      {% else %}
-        <span class="text-slate-400">waiting...</span>
+<p class="text-sm text-slate-500 mb-5">{{ hints.get(s, '') }}</p>
+<div class="lg:columns-2 lg:gap-6 cols">
+
+<div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
+  <ol>
+    {% for label, done in steps %}
+    <li class="flex gap-3 relative {% if not loop.last %}pb-5{% endif %}">
+      {% if not loop.last %}
+      <span class="absolute left-[11px] top-6 bottom-0 w-px {{ 'bg-blue-600' if done else 'bg-slate-200' }}"></span>
       {% endif %}
-    {% else %}
-      <span>${{ "%.0f"|format(q.price) }}
-        {% if q.flag %}<span class="text-red-600 text-xs">flagged</span>{% endif %}
-        <span class="text-xs text-slate-500">{{ q.status }}</span></span>
-      {% if q.status == 'accepted' %}
-        <a class="text-blue-600 underline ml-2" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Open vendor link</a>
-      {% endif %}
-    {% endif %}
+      <span class="relative w-6 h-6 rounded-full flex items-center justify-center shrink-0
+        {% if done %}bg-blue-600 text-white{% elif loop.index0 == ns.current %}border-2 border-blue-600 bg-white{% else %}bg-slate-200{% endif %}">
+        {% if done %}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        {% elif loop.index0 == ns.current %}
+          <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+        {% endif %}
+      </span>
+      <div class="text-sm pt-0.5 {% if done or loop.index0 == ns.current %}font-medium text-slate-800{% else %}text-slate-400{% endif %}">{{ label }}</div>
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+
+{% if vendor %}
+<div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-4 flex items-center gap-3">
+  <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-semibold">{{ vendor.vendor_name[0] }}</div>
+  <div>
+    <div class="text-sm font-medium">{{ vendor.vendor_name }}</div>
+    <div class="text-xs text-slate-500">Earliest visit {{ vendor.earliest_date }}</div>
   </div>
-  {% endfor %}
 </div>
 {% endif %}
-{% if issue.status == 'Quotes requested' %}
-<script>setTimeout(function () { location.reload(); }, 5000);</script>
-{% endif %}
-{% if issue.after_photo_path %}
-<div class="mb-3">
-  <div class="text-sm font-medium mb-1">After photo from the vendor</div>
-  <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full">
-</div>
-{% endif %}
-{% if issue.status == 'Work submitted' %}
-<div class="bg-white border rounded-xl p-4 mb-3">
-  <div class="font-medium mb-2">Is the issue fixed?</div>
+
+{% if s == 'Work submitted' %}
+<div class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm mb-4">
+  <div class="text-sm font-medium mb-3">Is the issue fixed?</div>
+  {% if issue.after_photo_path %}
+  <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full mb-3" alt="After photo">
+  {% endif %}
   <form method="post" action="/status/{{ issue.id }}/confirm" class="flex gap-2">
-    <button name="answer" value="yes" class="flex-1 bg-blue-600 text-white rounded-lg py-2 font-medium">Yes, fixed</button>
-    <button name="answer" value="no" class="flex-1 border border-slate-300 rounded-lg py-2 font-medium">No, still broken</button>
+    <button name="answer" value="yes" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium">Yes, fixed</button>
+    <button name="answer" value="no" class="flex-1 border border-slate-300 rounded-lg py-2.5 text-sm font-medium">No, still broken</button>
   </form>
 </div>
 {% endif %}
-<h2 class="font-medium mb-2">Activity</h2>
-<ul class="text-sm space-y-2">
-  {% for e in events %}
-  <li class="bg-white border rounded-lg p-2">
-    <div class="font-medium">{{ e.action }}</div>
-    <div class="text-slate-500">{{ e.reason }}</div>
-    <div class="text-xs text-slate-400">{{ e.created_at }}</div>
-  </li>
-  {% endfor %}
-</ul>
+
+<div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
+  <div class="text-sm font-medium mb-2">Your report</div>
+  {% if issue.photo_path %}
+  <img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg w-full mb-3" alt="Your photo">
+  {% endif %}
+  {% if issue.ai_summary %}
+  <div class="text-xs uppercase tracking-wide text-slate-400 mb-1">AI summary</div>
+  <p class="text-sm text-slate-700 mb-3">{{ issue.ai_summary }}</p>
+  <div class="grid grid-cols-2 gap-3 text-sm">
+    <div><div class="text-xs text-slate-400">Repair type</div><div class="font-medium capitalize">{{ issue.repair_type }}</div></div>
+    <div><div class="text-xs text-slate-400">Estimated cost</div>
+      <div class="font-medium">${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}</div></div>
+  </div>
+  {% endif %}
+</div>
+
+{% if issue.after_photo_path and s != 'Work submitted' %}
+<div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
+  <div class="text-sm font-medium mb-2">After photo from the vendor</div>
+  <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full" alt="After photo">
+</div>
+{% endif %}
+
+<details class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
+  <summary class="text-sm font-medium cursor-pointer">Activity</summary>
+  <ul class="mt-3 space-y-3">
+    {% for e in events %}
+    <li class="text-sm">
+      <div class="font-medium">{{ e.action }}</div>
+      {% if e.reason %}<div class="text-slate-500">{{ e.reason }}</div>{% endif %}
+      <div class="text-xs text-slate-400">{{ e.created_at }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+</details>
+
+{% if demo and quotes %}
+<details class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+  <summary class="text-sm font-medium cursor-pointer text-amber-900">Demo tools</summary>
+  <div class="mt-3 text-sm space-y-2">
+    <a class="text-blue-600 underline block" href="/manager/issue/{{ issue.id }}">Open manager view</a>
+    {% for q in quotes %}
+    <div class="flex justify-between items-center gap-2">
+      <span>{{ q.vendor_name }}{% if not q.is_simulated %} (real vendor){% endif %}</span>
+      {% if not q.is_simulated and q.status in ('invited', 'accepted') %}
+        <a class="text-blue-600 underline" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Open vendor link</a>
+      {% elif q.price %}
+        <span class="text-slate-500">${{ "%.0f"|format(q.price) }} {{ q.status }}</span>
+      {% else %}
+        <span class="text-slate-400">waiting...</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
+</div>
+{% if s in ('New', 'Analyzed', 'Quotes requested', 'Quotes received') %}
+<script>
+  setTimeout(function () {
+    if (!document.querySelector('details[open]')) { location.reload(); }
+  }, 5000);
+</script>
+{% endif %}
 {% endblock %}
