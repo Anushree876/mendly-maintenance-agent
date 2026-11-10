@@ -1,44 +1,47 @@
 {% extends "base.html" %}
 {% block title %}Report a problem | Mendly{% endblock %}
 {% block content %}
-<div class="max-w-4xl mx-auto md:bg-white md:border md:border-slate-200 md:rounded-2xl md:shadow-sm md:p-8">
-  <h1 class="text-lg md:text-2xl font-semibold">Report a problem</h1>
-  <p class="text-sm text-slate-500 mt-1 mb-5 md:mb-8">{{ property.address }}</p>
+<div class="window max-w-4xl mx-auto">
 
-  <form method="post" enctype="multipart/form-data"
-        class="space-y-5 md:space-y-0 md:grid md:grid-cols-2 md:gap-8"
-        onsubmit="var b=this.querySelector('button[type=submit]'); setTimeout(function () { b.disabled = true; b.textContent = 'Analyzing your photo...'; }, 0);">
-    <div>
-      <span class="block text-sm font-medium mb-1.5">Photo</span>
-      <label for="photo" class="block cursor-pointer">
-        <div class="border-2 border-dashed border-slate-300 rounded-xl bg-white px-4 py-8 md:py-14 text-center hover:border-blue-400">
-          <div id="placeholder">
-            <svg class="mx-auto mb-2 text-blue-600" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <div class="text-sm font-medium">Add a photo</div>
-            <div class="text-xs text-slate-500 mt-0.5">Tap to upload or take a photo</div>
+  <div class="p-5 md:p-8">
+    <h1 class="text-xl md:text-2xl font-semibold tracking-tight">Report a problem</h1>
+    <p class="text-sm t-soft mt-1 mb-6">{{ property.address }}</p>
+
+    <form method="post" enctype="multipart/form-data"
+          class="space-y-5 md:space-y-0 md:grid md:grid-cols-2 md:gap-8"
+          onsubmit="var b=this.querySelector('button[type=submit]'); setTimeout(function () { b.disabled = true; b.textContent = 'Analyzing your photo...'; }, 0);">
+      <div>
+        <span class="block text-sm font-medium mb-1.5">Photo</span>
+        <label for="photo" class="block cursor-pointer">
+          <div class="border-2 border-dashed border-slate-300 rounded-xl px-4 py-8 md:py-14 text-center hover:border-blue-400" style="background:rgba(255,255,255,.04)">
+            <div id="placeholder">
+              <svg class="mx-auto mb-2 text-blue-600" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <div class="text-sm font-medium">Add a photo</div>
+              <div class="text-xs t-muted mt-0.5">Tap to upload or take a photo</div>
+            </div>
+            <img id="preview" class="hidden rounded-lg mx-auto max-h-64 md:max-h-80" alt="Preview">
           </div>
-          <img id="preview" class="hidden rounded-lg mx-auto max-h-64 md:max-h-80" alt="Preview">
-        </div>
-      </label>
-      <input id="photo" type="file" name="photo" accept="image/*" required class="sr-only">
-    </div>
+        </label>
+        <input id="photo" type="file" name="photo" accept="image/*" required class="sr-only">
+      </div>
 
-    <div class="space-y-5">
-      <div>
-        <label class="block text-sm font-medium mb-1.5" for="tenant_name">Your name</label>
-        <input id="tenant_name" name="tenant_name" placeholder="e.g. Priya Sharma"
-               class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <div class="space-y-5">
+        <div>
+          <label class="block text-sm font-medium mb-1.5" for="tenant_name">Your name</label>
+          <input id="tenant_name" name="tenant_name" placeholder="e.g. Priya Sharma"
+                 class="w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5" for="message">Describe the issue</label>
+          <textarea id="message" name="message" required rows="5" maxlength="500"
+                    placeholder="Tell us what's wrong (e.g. leaking sink, not working)"
+                    class="w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+          <div id="count" class="text-right text-xs t-muted mt-1">0/500</div>
+        </div>
+        <button type="submit" class="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium disabled:opacity-60">Submit request</button>
       </div>
-      <div>
-        <label class="block text-sm font-medium mb-1.5" for="message">Describe the issue</label>
-        <textarea id="message" name="message" required rows="5" maxlength="500"
-                  placeholder="Tell us what's wrong (e.g. leaking sink, not working)"
-                  class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-        <div id="count" class="text-right text-xs text-slate-400 mt-1">0/500</div>
-      </div>
-      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-3 text-sm font-medium disabled:opacity-60">Submit request</button>
-    </div>
-  </form>
+    </form>
+  </div>
 </div>
 
 <script>

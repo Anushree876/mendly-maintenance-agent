@@ -1,0 +1,42 @@
+{% extends "manager_page.html" %}
+{% block title %}Rules | Mendly{% endblock %}
+{% block page_title %}Rules{% endblock %}
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="flex items-center justify-between mb-5">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Spend Guard</h1>
+      <p class="text-sm t-soft mt-1">The rules the agent must follow before any money moves.</p>
+    </div>
+    <span class="text-xs flex items-center gap-1.5" style="color:#6ee7b7"><span class="live-dot"></span>Active</span>
+  </div>
+
+  {% if saved %}
+  <div class="banner-ok rounded-xl px-4 py-2.5 mb-5 text-sm">Rules saved. The agent uses them from now on.</div>
+  {% endif %}
+
+  <form method="post" action="/manager/rules" class="glass p-5 space-y-6 text-sm">
+    <div>
+      <div class="flex justify-between mb-2"><label for="r1">Auto-approve under</label><span id="v1" class="font-semibold">${{ '%.0f'|format(settings.auto_approve_limit) }}</span></div>
+      <input id="r1" type="range" name="auto_approve_limit" min="0" max="1000" step="10" value="{{ '%.0f'|format(settings.auto_approve_limit) }}" class="w-full">
+      <p class="text-xs t-muted mt-1">Winning quotes at or under this amount are approved automatically.</p>
+    </div>
+    <div>
+      <div class="flex justify-between mb-2"><label for="r2">Flag quotes above average by</label><span id="v2" class="font-semibold">{{ '%.0f'|format(settings.max_above_avg_pct) }}%</span></div>
+      <input id="r2" type="range" name="max_above_avg_pct" min="0" max="100" step="5" value="{{ '%.0f'|format(settings.max_above_avg_pct) }}" class="w-full">
+      <p class="text-xs t-muted mt-1">Flagged quotes are never picked by the agent.</p>
+    </div>
+    <button class="btn-grad w-full rounded-xl py-2.5 text-sm">Save rules</button>
+  </form>
+
+  <ul class="text-xs t-muted mt-5 space-y-1.5 list-disc pl-4">
+    <li>The agent compares every quote with the usual price for that repair.</li>
+    <li>Quotes above your limit always wait for your approval.</li>
+    <li>Every payment still needs your own click on Approve and pay.</li>
+  </ul>
+</div>
+<script>
+  document.getElementById('r1').addEventListener('input', function (e) { document.getElementById('v1').textContent = '$' + e.target.value; });
+  document.getElementById('r2').addEventListener('input', function (e) { document.getElementById('v2').textContent = e.target.value + '%'; });
+</script>
+{% endblock %}

@@ -1,100 +1,177 @@
-{% extends "manager_base.html" %}
+{% extends "manager_page.html" %}
 {% set active = 'dashboard' %}
+{% block title %}Issue #{{ issue.id }} | Mendly{% endblock %}
+{% block page_title %}Issue #{{ issue.id }}{% endblock %}
 {% block content %}
-<a href="/manager" class="text-xs text-blue-600">Back to dashboard</a>
-<h1 class="text-xl font-semibold mt-1">Issue #{{ issue.id }}: {{ issue.repair_type|capitalize }}</h1>
-<p class="text-sm text-slate-500 mb-2">{{ property.address }}</p>
-<span class="inline-block text-xs bg-blue-100 text-blue-700 rounded-full px-3 py-1 mb-3">{{ issue.status }}</span>
+{% from "_macros.html" import badge, urgency_badge %}
+{% set s = issue.status %}
 
-{% if issue.photo_path %}
-<img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg mb-3 w-full">
+{% if not is_embed(request) %}
+<a href="/manager" class="text-sm text-slate-500 hover:text-slate-800">&larr; Back to dashboard</a>
 {% endif %}
-<div class="bg-white border rounded-lg p-3 text-sm mb-3">
-  <div class="font-medium mb-1">AI summary</div>
-  <div>{{ issue.ai_summary }}</div>
-  <div class="text-slate-500 mt-1">Urgency: {{ issue.urgency }}.
-    Estimated ${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}.
-    {% if avg %}Usual price ${{ "%.0f"|format(avg) }}.{% endif %}</div>
-</div>
 
-<h2 class="font-medium mb-2">Quotes</h2>
-<div class="space-y-2 mb-4">
-  {% for q in quotes %}
-  <div class="bg-white border rounded-lg p-3 text-sm
-       {% if q.status in ('recommended','accepted') %}border-green-500{% endif %}">
-    <div class="flex justify-between">
-      <span class="font-medium">{{ q.vendor_name }}</span>
-      <span class="font-semibold">${{ "%.0f"|format(q.price) }}</span>
+<div class="flex flex-wrap items-start justify-between gap-4 mt-3 mb-6">
+  <div>
+    <div class="flex flex-wrap items-center gap-2">
+      <h1 class="text-xl font-semibold">{{ issue.message }}</h1>
+      {{ urgency_badge(issue.urgency) }}
+      {{ badge(s) }}
     </div>
-    <div class="text-slate-500">Rating {{ q.rating }}, earliest {{ q.earliest_date }}</div>
-    {% if q.flag %}<div class="text-xs text-red-600 mt-1">Flagged: {{ q.flag_reason }}</div>{% endif %}
-    {% if q.status == 'recommended' %}<div class="text-xs text-green-700 mt-1">Recommended</div>{% endif %}
-    {% if q.status == 'accepted' %}<div class="text-xs text-blue-700 mt-1">Selected</div>{% endif %}
-    {% if issue.status == 'Needs manager' %}
-    <form method="post" action="/manager/issue/{{ issue.id }}/approve" class="mt-2">
-      <input type="hidden" name="quote_id" value="{{ q.id }}">
-      <button class="bg-blue-600 text-white rounded-lg px-3 py-1 text-xs">Approve this quote</button>
-    </form>
-    {% endif %}
+    <p class="text-sm text-slate-500 mt-1">{{ property.address }} &middot; Issue #{{ issue.id }} &middot; Reported by {{ issue.tenant_name or 'Tenant' }}</p>
   </div>
-  {% endfor %}
-</div>
-
-{% if issue.status == 'Needs manager' %}
-<form method="post" action="/manager/issue/{{ issue.id }}/reject" class="mb-4">
-  <button class="border border-slate-300 rounded-lg px-3 py-1 text-sm">Reject all</button>
-</form>
-{% endif %}
-
-{% if issue.after_photo_path %}
-<div class="bg-white border rounded-lg p-3 mb-4 text-sm">
-  <div class="font-medium mb-2">After photo</div>
-  <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full mb-2">
-  {% if issue.verify_confidence is not none %}
-  <div class="text-slate-600">Photo check: {{ "%.0f"|format(issue.verify_confidence * 100) }}% confidence.
-    {{ issue.verify_reason }}</div>
+  {% if s == 'Needs manager' %}
+  <form method="post" action="/manager/issue/{{ issue.id }}/reject">
+    <button class="border border-slate-300 bg-white hover:bg-slate-50 rounded-lg px-4 py-2 text-sm font-medium">Reject all quotes</button>
+  </form>
   {% endif %}
 </div>
+
+{% if s == 'Needs manager' %}
+<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-900">
+  <div class="font-medium">This job needs your approval</div>
+  <div class="mt-0.5">The best quote is above your ${{ "%.0f"|format(settings.auto_approve_limit) }} auto-approve limit. Pick a quote below to approve it.</div>
+</div>
 {% endif %}
-{% if issue.status == 'Disputed' %}
-<div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm">
-  <div class="font-medium text-red-800 mb-2">This job needs your decision</div>
-  <div class="flex gap-2">
+
+{% if s == 'Disputed' %}
+<div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-sm">
+  <div class="font-medium text-red-800">This job needs your decision</div>
+  <div class="text-red-700 mt-0.5">
+    {% if issue.verify_confidence is not none %}Photo check: {{ "%.0f"|format(issue.verify_confidence * 100) }}% confidence. {{ issue.verify_reason }}
+    {% elif issue.tenant_confirmed == 0 %}The tenant says the problem is not fixed.{% endif %}
+  </div>
+  <div class="flex gap-2 mt-3">
     <form method="post" action="/manager/issue/{{ issue.id }}/verify">
-      <button class="bg-blue-600 text-white rounded-lg px-3 py-1 text-xs">Mark as fixed</button>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium">Mark as fixed</button>
     </form>
     <form method="post" action="/manager/issue/{{ issue.id }}/redo">
-      <button class="border border-slate-300 rounded-lg px-3 py-1 text-xs">Send back to vendor</button>
+      <button class="border border-slate-300 bg-white rounded-lg px-4 py-2 text-sm font-medium">Send back to vendor</button>
     </form>
   </div>
 </div>
 {% endif %}
-{% if issue.status == 'Ready to pay' %}
+
+{% if s == 'Ready to pay' %}
 {% for q in quotes if q.status == 'accepted' %}
-<div class="bg-teal-50 border border-teal-200 rounded-lg p-3 mb-4 text-sm text-teal-800">
-  <div class="font-medium mb-1">Verified and ready to pay</div>
-  <div class="mb-2">Pay {{ q.vendor_name }} ${{ "%.2f"|format(q.price) }} through PayPal.</div>
-  <form method="post" action="/manager/issue/{{ issue.id }}/pay">
-    <button class="bg-blue-600 text-white rounded-lg px-3 py-2 text-sm font-medium">Approve and pay</button>
+<div class="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
+  <div class="text-sm text-teal-900">
+    <div class="font-medium">Verified and ready to pay</div>
+    <div class="mt-0.5">Pay {{ q.vendor_name }} ${{ "%.2f"|format(q.price) }} through PayPal.</div>
+  </div>
+  <form method="post" action="/manager/issue/{{ issue.id }}/pay" target="_top">
+    <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-5 py-2.5 text-sm font-medium">Approve and pay</button>
   </form>
 </div>
 {% endfor %}
 {% endif %}
-{% if issue.status == 'Paid' and payment %}
-<div class="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 text-sm text-green-800">
-  <div class="font-medium mb-1">Paid</div>
-  <div>${{ "%.2f"|format(payment.amount) }} for {{ payment.vendor_name }}</div>
+
+{% if s == 'Paid' and payment %}
+<div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 text-sm text-green-900">
+  <div class="font-medium">Paid</div>
+  <div class="mt-0.5">${{ "%.2f"|format(payment.amount) }} for {{ payment.vendor_name }}</div>
   <div class="text-xs text-green-700 mt-1">PayPal capture {{ payment.paypal_capture_id }}</div>
 </div>
 {% endif %}
-<h2 class="font-medium mb-2">Audit log</h2>
-<ul class="text-sm space-y-2">
-  {% for e in events %}
-  <li class="bg-white border rounded-lg p-2">
-    <div class="font-medium">{{ e.action }}</div>
-    <div class="text-slate-500">{{ e.reason }}</div>
-    <div class="text-xs text-slate-400">{{ e.actor }}, {{ e.created_at }}</div>
-  </li>
-  {% endfor %}
-</ul>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+  <div class="space-y-6">
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      {% if issue.photo_path %}
+      <img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg w-full" alt="Issue photo">
+      {% else %}
+      <div class="rounded-lg bg-slate-100 text-slate-400 text-sm text-center py-10">No photo (seeded job)</div>
+      {% endif %}
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div class="text-sm font-medium mb-3 text-blue-700">AI summary</div>
+      <p class="text-sm text-slate-700 mb-4">{{ issue.ai_summary or 'No summary yet.' }}</p>
+      <dl class="space-y-3 text-sm">
+        <div><dt class="text-xs text-slate-400">Repair type</dt><dd class="font-medium capitalize">{{ issue.repair_type or '-' }}</dd></div>
+        <div><dt class="text-xs text-slate-400">Urgency</dt><dd class="mt-0.5">{{ urgency_badge(issue.urgency) }}</dd></div>
+        <div><dt class="text-xs text-slate-400">Estimated cost</dt>
+          <dd class="font-medium">${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}</dd></div>
+        {% if avg %}<div><dt class="text-xs text-slate-400">Usual price for this repair</dt><dd class="font-medium">${{ "%.0f"|format(avg) }}</dd></div>{% endif %}
+      </dl>
+    </div>
+
+    {% if issue.after_photo_path %}
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div class="text-sm font-medium mb-3">After photo</div>
+      <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full mb-3" alt="After photo">
+      {% if issue.verify_confidence is not none %}
+      <div class="text-sm text-slate-600">
+        <span class="font-medium">Photo check: {{ "%.0f"|format(issue.verify_confidence * 100) }}% confidence.</span>
+        {{ issue.verify_reason }}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="lg:col-span-2 space-y-6">
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <h2 class="text-sm font-medium mb-4">Quote comparison</h2>
+      {% if quotes %}
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {% for q in quotes %}
+        {% set pct = ((q.price / avg - 1) * 100) if avg else none %}
+        <div class="rounded-xl border p-4 flex flex-col
+          {% if q.status in ('recommended', 'accepted') %}border-green-500 bg-green-50/40
+          {% elif q.flag %}border-red-300 bg-red-50/40
+          {% else %}border-slate-200 bg-white{% endif %}
+          {% if q.status in ('declined', 'closed') %}opacity-60{% endif %}">
+          <div class="h-6 mb-2">
+            {% if q.status == 'accepted' %}
+              <span class="text-xs font-medium rounded-full px-2.5 py-0.5 bg-blue-100 text-blue-700">Selected</span>
+            {% elif q.status == 'recommended' %}
+              <span class="text-xs font-medium rounded-full px-2.5 py-0.5 bg-green-100 text-green-700">Recommended</span>
+            {% elif q.status == 'declined' %}
+              <span class="text-xs font-medium rounded-full px-2.5 py-0.5 bg-slate-100 text-slate-500">Not selected</span>
+            {% endif %}
+          </div>
+          <div class="text-sm font-medium">{{ q.vendor_name }}</div>
+          <div class="text-2xl font-semibold mt-1">${{ "%.0f"|format(q.price) }}</div>
+          {% if q.flag %}
+          <div class="mt-2 text-xs rounded-md bg-red-100 text-red-700 px-2 py-1">Flagged: {{ q.flag_reason }}</div>
+          {% elif pct is not none %}
+          <div class="mt-2 text-xs text-slate-500">{{ "%+.0f"|format(pct) }}% vs usual price</div>
+          {% endif %}
+          <div class="mt-3 text-xs text-slate-500 space-y-1">
+            <div>Rating {{ q.rating }} / 5</div>
+            <div>Earliest {{ q.earliest_date or '-' }}</div>
+            {% if q.notes %}<div class="text-slate-400">{{ q.notes }}</div>{% endif %}
+          </div>
+          {% if s == 'Needs manager' %}
+          <form method="post" action="/manager/issue/{{ issue.id }}/approve" class="mt-auto pt-4">
+            <input type="hidden" name="quote_id" value="{{ q.id }}">
+            <button class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium">Approve this quote</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-sm text-slate-500">No quotes yet. Vendors have been invited.</p>
+      {% endif %}
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <h2 class="text-sm font-medium mb-4">Audit timeline</h2>
+      <ol>
+        {% for e in events %}
+        <li class="flex gap-3 relative {% if not loop.last %}pb-5{% endif %}">
+          {% if not loop.last %}<span class="absolute left-[5px] top-4 bottom-0 w-px bg-slate-200"></span>{% endif %}
+          <span class="relative mt-1.5 w-[11px] h-[11px] rounded-full bg-blue-600 shrink-0"></span>
+          <div class="text-sm min-w-0">
+            <div class="font-medium">{{ e.action }}</div>
+            {% if e.reason %}<div class="text-slate-500">{{ e.reason }}</div>{% endif %}
+            <div class="text-xs text-slate-400 mt-0.5">{{ e.actor }} &middot; {{ e.created_at|replace('T', ' ') }}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+</div>
 {% endblock %}

@@ -1,0 +1,27 @@
+{% set n = attention_count() %}
+<div class="menubar hidden md:flex items-center justify-between px-5 text-[12.5px] sticky top-0 z-30">
+  <div class="flex items-center gap-5">
+    <a href="/manager" data-app="dashboard" class="font-semibold flex items-center gap-1.5 !text-white">
+      <img src="/static/logo.png" alt="" class="mb-logo">Mendly
+    </a>
+    <a href="/manager" data-app="dashboard">Dashboard</a>
+    <a id="mb-att" href="/manager/attention" data-app="attention">Needs attention{% if n %} ({{ n }}){% endif %}</a>
+    <a href="/manager/rules" data-app="rules">Rules</a>
+  </div>
+  <div class="flex items-center gap-4">
+    <span id="clock" class="t-muted"></span>
+    <a href="/logout">Sign out</a>
+  </div>
+</div>
+<script>
+  (function () {
+    var el = document.getElementById('clock');
+    if (!el) return;
+    function tick() {
+      var d = new Date();
+      el.textContent = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        + '  ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    tick(); setInterval(tick, 30000);
+  })();
+</script>

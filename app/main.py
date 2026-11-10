@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image
@@ -468,7 +468,8 @@ def manager_dashboard(request: Request):
     stats, issues = dashboard_data()
     return templates.TemplateResponse(
         request, "manager_dashboard.html",
-        {"stats": stats, "issues": issues, "settings": db.get_settings()},
+        {"stats": stats, "issues": issues, "settings": db.get_settings(),
+         "attention": attention_items(), "feed": recent_feed()},
     )
 
 
@@ -486,4 +487,133 @@ def manager_rules(
     )
     conn.commit()
     conn.close()
-    return RedirectResponse("/manager#rules", status_code=303)
+    return RedirectResponse("/manager/rules?saved=1", status_code=303)
+
+# ---------- Needs attention ----------
+
+URGENCY_RANK = {"high": 0, "medium": 1, "low": 2}
+OVERDUE_AFTER_HOURS = {db.S_QUOTES_REQUESTED: 24, db.S_WORK_SUBMITTED: 48}
+ACTION_LABELS = {"approval": "Review quotes", "disputed": "Decide",
+                 "pay": "Approve and pay", "overdue": "Take a look"}
+
+
+def human_ago(iso):
+    try:
+        secs = (datetime.now() - datetime.fromisoformat(iso)).total_seconds()
+    except (TypeError, ValueError):
+        return ""
+    if secs < 3600:
+        return f"{max(1, int(secs // 60))} min"
+    if secs < 86400:
+        h = int(secs // 3600)
+        return f"{h} hour" + ("s" if h != 1 else "")
+    d = int(secs // 86400)
+    return f"{d} day" + ("s" if d != 1 else "")
+
+
+def attention_items():
+    limit = db.get_settings()["auto_approve_limit"]
+    conn = db.get_conn()
+    rows = conn.execute(
+        """SELECT i.*, p.address,
+                  (SELECT MAX(created_at) FROM events WHERE issue_id = i.id) AS last_event
+           FROM issues i JOIN properties p ON p.id = i.property_id
+           WHERE i.status IN (?,?,?,?,?)""",
+        (db.S_NEEDS_MANAGER, db.S_DISPUTED, db.S_READY_TO_PAY,
+         db.S_QUOTES_REQUESTED, db.S_WORK_SUBMITTED),
+    ).fetchall()
+
+    items = []
+    for r in rows:
+        i = dict(r)
+        status = i["status"]
+        since = i["last_event"] or i["created_at"]
+        try:
+            hours = (datetime.now() - datetime.fromisoformat(since)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            hours = 0
+
+        if status in OVERDUE_AFTER_HOURS:
+            if hours < OVERDUE_AFTER_HOURS[status]:
+                continue
+            kind = "overdue"
+            reason = ("Vendors have not replied to the quote request"
+                      if status == db.S_QUOTES_REQUESTED
+                      else "Work was submitted but the tenant has not answered")
+        elif status == db.S_NEEDS_MANAGER:
+            kind = "approval"
+            q = conn.execute(
+                "SELECT price FROM quotes WHERE issue_id = ? AND status = 'recommended'",
+                (i["id"],)).fetchone()
+            reason = (f"Best quote ${q['price']:.0f} is above your ${limit:.0f} limit"
+                      if q else "No quote passed the price rules")
+        elif status == db.S_DISPUTED:
+            kind = "disputed"
+            reason = ("Tenant says the problem is not fixed" if i["tenant_confirmed"] == 0
+                      else (i["verify_reason"] or "The photo check was not confident"))
+        else:
+            kind = "pay"
+            q = conn.execute(
+                """SELECT q.price, v.name FROM quotes q JOIN vendors v ON v.id = q.vendor_id
+                   WHERE q.issue_id = ? AND q.status = 'accepted'""", (i["id"],)).fetchone()
+            failed = conn.execute(
+                "SELECT 1 FROM payments WHERE issue_id = ? AND paypal_status = 'FAILED' LIMIT 1",
+                (i["id"],)).fetchone()
+            who = f"${q['price']:.0f} to {q['name']}" if q else "the vendor"
+            reason = (f"The last payment attempt did not complete. Pay {who}"
+                      if failed else f"Verified. Waiting for your approval to pay {who}")
+
+        items.append({
+            "id": i["id"], "address": i["address"], "message": i["message"],
+            "urgency": i["urgency"], "photo_path": i["photo_path"], "kind": kind,
+            "reason": reason, "waiting": human_ago(since), "hours": hours,
+            "action": ACTION_LABELS[kind],
+        })
+    conn.close()
+    items.sort(key=lambda x: (URGENCY_RANK.get(x["urgency"], 1), -x["hours"]))
+    return items
+
+
+def recent_feed(limit=7):
+    conn = db.get_conn()
+    rows = conn.execute(
+        """SELECT issue_id, actor, action, reason, created_at FROM events
+           WHERE action NOT LIKE 'Status:%' AND action NOT LIKE 'Seeded%'
+           ORDER BY id DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [{**dict(r), "ago": human_ago(r["created_at"])} for r in rows]
+
+
+@app.get("/manager/attention")
+def manager_attention(request: Request):
+    items = attention_items()
+    counts = {k: sum(1 for x in items if x["kind"] == k)
+              for k in ("approval", "disputed", "pay", "overdue")}
+    return templates.TemplateResponse(
+        request, "manager_attention.html", {"items": items, "counts": counts})
+
+
+templates.env.globals["attention_count"] = lambda: len(attention_items())
+
+# ---------- Windows: embed detection, Rules page, live data ----------
+
+templates.env.globals["is_embed"] = lambda request: (
+    request.headers.get("sec-fetch-dest") == "iframe"
+    or request.query_params.get("embed") == "1"
+)
+
+
+@app.get("/manager/rules")
+def manager_rules_page(request: Request):
+    return templates.TemplateResponse(
+        request, "manager_rules.html",
+        {"settings": db.get_settings(), "saved": request.query_params.get("saved") == "1"},
+    )
+
+
+@app.get("/manager/issues.json")
+def manager_issues_json():
+    stats, issues = dashboard_data()
+    return JSONResponse(issues)

@@ -1,0 +1,81 @@
+{% extends "manager_page.html" %}
+{% set active = 'attention' %}
+{% block title %}Needs attention | Mendly{% endblock %}
+{% block page_title %}Needs attention{% endblock %}
+{% block content %}
+{% from "_macros.html" import urgency_badge %}
+{% set tone = {'approval': '#fcd34d', 'disputed': '#fca5a5', 'pay': '#5eead4', 'overdue': '#cbd5e1'} %}
+{% set label = {'approval': 'Needs approval', 'disputed': 'Disputed', 'pay': 'Ready to pay', 'overdue': 'Overdue'} %}
+
+<div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Needs attention</h1>
+    <p class="text-sm t-soft mt-1">Jobs that are stuck and waiting for a decision, most urgent first.</p>
+  </div>
+</div>
+
+<div class="flex flex-wrap gap-2 mb-5">
+  <button class="chip chip-active" data-filter="all">All <span class="chip-count">{{ items|length }}</span></button>
+  <button class="chip" data-filter="approval">Needs approval <span class="chip-count">{{ counts.approval }}</span></button>
+  <button class="chip" data-filter="disputed">Disputed <span class="chip-count">{{ counts.disputed }}</span></button>
+  <button class="chip" data-filter="pay">Ready to pay <span class="chip-count">{{ counts.pay }}</span></button>
+  <button class="chip" data-filter="overdue">Overdue <span class="chip-count">{{ counts.overdue }}</span></button>
+</div>
+
+<div class="space-y-4">
+  {% for it in items %}
+  <div data-kind="{{ it.kind }}">
+    <div class="glass p-4 flex flex-wrap items-center gap-4">
+      {% if it.photo_path %}
+      <img src="/static/uploads/{{ it.photo_path }}" class="w-24 h-20 rounded-xl object-cover" alt="">
+      {% else %}
+      <div class="w-24 h-20 rounded-xl flex items-center justify-center t-muted text-xs" style="background:rgba(255,255,255,.06)">No photo</div>
+      {% endif %}
+      <div class="flex-1 min-w-[200px]">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-medium">{{ it.address }}</span>
+          {{ urgency_badge(it.urgency) }}
+          <span class="pill pill-slate">{{ label[it.kind] }}</span>
+        </div>
+        <div class="text-sm t-soft mt-0.5">{{ it.message }}</div>
+        <div class="text-sm mt-1" style="color: {{ tone[it.kind] }}">{{ it.reason }}</div>
+        <div class="text-xs t-muted mt-1.5 flex items-center gap-1.5">
+          <svg class="ico" style="width:14px;height:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          Waiting {{ it.waiting }}
+        </div>
+      </div>
+      <a href="/manager/issue/{{ it.id }}" data-win="issue-{{ it.id }}" data-title="Issue #{{ it.id }}" class="btn-grad rounded-xl px-5 py-2.5 text-sm">{{ it.action }} &rarr;</a>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div id="clear" class="glass p-6 flex items-center gap-4 {% if items %}hidden{% endif %}">
+    <div class="w-11 h-11 rounded-full flex items-center justify-center" style="background:rgba(52,211,153,.18);color:#34d399">
+      <svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+    </div>
+    <div>
+      <div class="font-medium">All clear</div>
+      <div class="text-sm t-soft">No other issues at the moment.</div>
+    </div>
+  </div>
+</div>
+
+<p class="text-xs t-muted mt-6">Overdue means vendors have not replied for 24 hours, or a tenant has not answered for 48 hours.</p>
+
+<script>
+  var chips = document.querySelectorAll('[data-filter]');
+  var cards = document.querySelectorAll('[data-kind]');
+  var clear = document.getElementById('clear');
+  function apply(k) {
+    var shown = 0;
+    chips.forEach(function (b) { b.classList.toggle('chip-active', b.dataset.filter === k); });
+    cards.forEach(function (c) {
+      var show = (k === 'all' || c.dataset.kind === k);
+      c.classList.toggle('hidden', !show);
+      if (show) shown++;
+    });
+    clear.classList.toggle('hidden', shown > 0);
+  }
+  chips.forEach(function (b) { b.addEventListener('click', function () { apply(b.dataset.filter); }); });
+</script>
+{% endblock %}

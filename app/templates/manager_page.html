@@ -1,0 +1,36 @@
+{%- set embed = is_embed(request) -%}
+<!doctype html>
+<html lang="en">
+<head>
+  {% include "_head.html" %}
+  <title>{% block title %}Mendly{% endblock %}</title>
+  {% block head %}{% endblock %}
+</head>
+<body class="theme {% if embed %}embed{% endif %} font-sans antialiased">
+{% if not embed %}
+{% include "_menubar.html" %}
+<div class="p-3 md:p-6 pb-28">
+  <div class="window max-w-5xl mx-auto">
+    <div class="titlebar">
+      <span class="tl-group">
+        <a href="/manager" class="dot r" aria-label="Back to dashboard"></a>
+        <span class="dot y"></span><span class="dot g"></span>
+      </span>
+      <div class="wtitle">Mendly &mdash; {% block page_title %}{% endblock %}</div>
+    </div>
+    <div class="p-4 md:p-7">
+{% else %}
+<div class="p-4 md:p-6">
+{% endif %}
+{% block content %}{% endblock %}
+{% if not embed %}
+    </div>
+  </div>
+</div>
+{% include "_dock.html" %}
+{% else %}
+</div>
+<script src="/static/windows.js?v=1"></script>
+{% endif %}
+</body>
+</html>

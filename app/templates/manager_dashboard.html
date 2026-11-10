@@ -1,84 +1,129 @@
 {% extends "manager_base.html" %}
-{% set active = 'dashboard' %}
 {% block title %}Dashboard | Mendly{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/styles/ag-grid.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/styles/ag-theme-alpine.css">
 <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/dist/ag-grid-community.min.js"></script>
 {% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-4">Dashboard</h1>
+{% set kinds = {'approval': 'Needs approval', 'disputed': 'Disputed', 'pay': 'Ready to pay', 'overdue': 'Overdue'} %}
+{% set colors = {'approval': 'amber', 'disputed': 'red', 'pay': 'teal', 'overdue': 'slate'} %}
+{% set dot = {'ai': '#22d3ee', 'agent': '#a78bfa', 'manager': '#fbbf24', 'paypal': '#34d399', 'tenant': '#60a5fa'} %}
+{% set p1 = [settings.auto_approve_limit / 10, 100] | min %}
+{% set p2 = [settings.max_above_avg_pct, 100] | min %}
 
-<div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-    <div class="text-xs text-slate-500">Spend this month</div>
-    <div class="text-2xl font-semibold mt-1">${{ "{:,.0f}".format(stats.spend) }}</div>
+<div id="banner">
+{% if attention %}
+{% set total = attention|length %}
+<a href="/manager/attention" data-app="attention" class="banner-amber rounded-2xl px-4 py-3 mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 hover:brightness-110 transition">
+  <svg class="ico t-amber" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+  <span class="font-medium">{{ total }} {{ 'job needs' if total == 1 else 'jobs need' }} your attention</span>
+  <span class="flex flex-wrap gap-2">
+    {% for key, label in kinds.items() %}
+      {% set c = attention | selectattr('kind', 'equalto', key) | list | length %}
+      {% if c %}<span class="pill pill-{{ colors[key] }}">{{ c }} {{ label }}</span>{% endif %}
+    {% endfor %}
+  </span>
+  <span class="ml-auto btn-amber rounded-lg px-3 py-1.5 text-sm font-semibold">Review now &rarr;</span>
+</a>
+{% else %}
+<div class="banner-ok rounded-2xl px-4 py-3 mb-6 flex items-center gap-3 text-sm">
+  <svg class="ico" style="color:#34d399" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+  <span class="font-medium">All clear.</span><span class="t-soft">Nothing needs your attention right now.</span>
+</div>
+{% endif %}
+</div>
+
+<div id="stats" class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+  <div class="glass glow-card p-4">
+    <div class="text-xs t-soft">Spend this month</div>
+    <div class="text-3xl font-semibold mt-1 grad-text">${{ "{:,.0f}".format(stats.spend) }}</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-    <div class="text-xs text-slate-500">Saved from flagged quotes</div>
-    <div class="text-2xl font-semibold mt-1">${{ "{:,.0f}".format(stats.saved) }}</div>
+  <div class="glass p-4">
+    <div class="text-xs t-soft">Saved from flagged quotes</div>
+    <div class="text-3xl font-semibold mt-1" style="color:#6ee7b7">${{ "{:,.0f}".format(stats.saved) }}</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-    <div class="text-xs text-slate-500">Open issues</div>
-    <div class="text-2xl font-semibold mt-1">{{ stats.open }}</div>
+  <div class="glass p-4">
+    <div class="text-xs t-soft">Open issues</div>
+    <div class="text-3xl font-semibold mt-1">{{ stats.open }}</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-    <div class="text-xs text-slate-500">Avg days to fix</div>
-    <div class="text-2xl font-semibold mt-1">{{ "%.1f"|format(stats.avg_days) }}</div>
+  <div class="glass p-4">
+    <div class="text-xs t-soft">Avg days to fix</div>
+    <div class="text-3xl font-semibold mt-1">{{ "%.1f"|format(stats.avg_days) }}</div>
   </div>
 </div>
 
-<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-  <section id="issues" class="xl:col-span-2 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-    <h2 class="font-medium mb-3">Issues</h2>
-    <div id="grid" class="ag-theme-alpine" style="height: 440px; width: 100%;"></div>
+<div class="grid grid-cols-1 xl:grid-cols-5 gap-6 mb-6">
+  <section class="glass p-5 xl:col-span-2">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-medium flex items-center gap-2">
+        <svg class="ico" style="color:#22d3ee" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8 8 9 4.6-1 8-4 8-9V6l-8-3z"/></svg>Spend Guard
+      </h2>
+      <span class="text-xs flex items-center gap-1.5" style="color:#6ee7b7"><span class="live-dot"></span>Active</span>
+    </div>
+    <div id="guard" class="space-y-5 text-sm">
+      <div>
+        <div class="flex justify-between mb-2"><span class="t-soft">Auto-approve under</span><span class="font-semibold">${{ '%.0f'|format(settings.auto_approve_limit) }}</span></div>
+        <div class="h-2 rounded-full" style="background:rgba(255,255,255,.08)"><div class="h-2 rounded-full" style="width:{{ '%.0f'|format(p1) }}%;background:linear-gradient(90deg,#6366f1,#22d3ee)"></div></div>
+      </div>
+      <div>
+        <div class="flex justify-between mb-2"><span class="t-soft">Flag quotes above average by</span><span class="font-semibold">{{ '%.0f'|format(settings.max_above_avg_pct) }}%</span></div>
+        <div class="h-2 rounded-full" style="background:rgba(255,255,255,.08)"><div class="h-2 rounded-full" style="width:{{ '%.0f'|format(p2) }}%;background:linear-gradient(90deg,#6366f1,#22d3ee)"></div></div>
+      </div>
+      <a href="/manager/rules" data-app="rules" class="btn-grad block text-center rounded-xl py-2.5">Edit rules</a>
+    </div>
   </section>
 
-  <section id="rules" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm h-fit">
-    <h2 class="font-medium mb-3">Spending rules</h2>
-    <form method="post" action="/manager/rules" class="space-y-4 text-sm">
-      <div>
-        <label class="block font-medium mb-1">Auto-approve under ($)</label>
-        <input type="number" name="auto_approve_limit" min="0" step="1" required
-               value="{{ '%.0f'|format(settings.auto_approve_limit) }}"
-               class="w-full border border-slate-200 rounded-lg px-3 py-2">
-        <p class="text-xs text-slate-500 mt-1">Winning quotes at or under this are approved automatically.</p>
-      </div>
-      <div>
-        <label class="block font-medium mb-1">Flag quotes above average by (%)</label>
-        <input type="number" name="max_above_avg_pct" min="0" step="1" required
-               value="{{ '%.0f'|format(settings.max_above_avg_pct) }}"
-               class="w-full border border-slate-200 rounded-lg px-3 py-2">
-        <p class="text-xs text-slate-500 mt-1">Flagged quotes are never picked by the agent.</p>
-      </div>
-      <button class="w-full bg-blue-600 text-white rounded-lg py-2 font-medium">Save rules</button>
-    </form>
+  <section class="glass p-5 xl:col-span-3">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-medium">Agent activity</h2>
+      <span class="text-xs flex items-center gap-1.5" style="color:#6ee7b7"><span class="live-dot"></span>Live</span>
+    </div>
+    <div id="feed">
+    {% if feed %}
+    <ul class="space-y-3">
+      {% for f in feed %}
+      <li>
+        <a href="/manager/issue/{{ f.issue_id }}" data-win="issue-{{ f.issue_id }}" data-title="Issue #{{ f.issue_id }}" class="flex gap-3 items-start rounded-lg hover:bg-white/5 -mx-2 px-2 py-1">
+          <span class="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0" style="background: {{ dot.get(f.actor, '#94a3b8') }}"></span>
+          <div class="min-w-0 flex-1 text-sm">
+            <div class="truncate">{{ f.action }}</div>
+            {% if f.reason %}<div class="text-xs t-muted truncate">{{ f.reason }}</div>{% endif %}
+          </div>
+          <span class="text-xs t-muted shrink-0">{{ f.ago }} ago</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-sm t-muted">No activity yet. Submit a request to watch the agent work.</p>
+    {% endif %}
+    </div>
   </section>
 </div>
+
+<section id="issues" class="glass p-5">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h2 class="font-medium">Issues</h2>
+    <input id="search" type="search" placeholder="Search properties, issues, vendors..."
+           class="w-full sm:w-72 border rounded-lg px-3 py-2 text-sm">
+  </div>
+  <div id="grid" class="ag-theme-alpine" style="height: 440px; width: 100%;"></div>
+</section>
 
 <script>
   const rows = {{ issues|tojson }};
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-  const pill = (text, cls) =>
-    '<span class="inline-block text-xs rounded-full px-2.5 py-0.5 ' + cls + '">' + text + '</span>';
-  const urgencyCls = {
-    high: 'bg-red-100 text-red-700',
-    medium: 'bg-amber-100 text-amber-700',
-    low: 'bg-green-100 text-green-700'
-  };
+  const pill = (text, cls) => '<span class="inline-block text-xs rounded-full px-2.5 py-0.5 ' + cls + '">' + text + '</span>';
+  const urgencyCls = { high: 'bg-red-100 text-red-700', medium: 'bg-amber-100 text-amber-700', low: 'bg-green-100 text-green-700' };
   const statusCls = {
-    'New': 'bg-slate-100 text-slate-600',
-    'Analyzed': 'bg-slate-100 text-slate-600',
-    'Quotes requested': 'bg-blue-100 text-blue-700',
-    'Quotes received': 'bg-blue-100 text-blue-700',
-    'Needs manager': 'bg-amber-100 text-amber-700',
-    'Scheduled': 'bg-purple-100 text-purple-700',
-    'Work submitted': 'bg-purple-100 text-purple-700',
-    'Verified': 'bg-teal-100 text-teal-700',
-    'Ready to pay': 'bg-teal-100 text-teal-700',
-    'Disputed': 'bg-red-100 text-red-700',
-    'Paid': 'bg-green-100 text-green-700',
-    'Payment failed': 'bg-red-100 text-red-700',
+    'New': 'bg-slate-100 text-slate-600', 'Analyzed': 'bg-slate-100 text-slate-600',
+    'Quotes requested': 'bg-blue-100 text-blue-700', 'Quotes received': 'bg-blue-100 text-blue-700',
+    'Needs manager': 'bg-amber-100 text-amber-700', 'Scheduled': 'bg-purple-100 text-purple-700',
+    'Work submitted': 'bg-purple-100 text-purple-700', 'Verified': 'bg-teal-100 text-teal-700',
+    'Ready to pay': 'bg-teal-100 text-teal-700', 'Disputed': 'bg-red-100 text-red-700',
+    'Paid': 'bg-green-100 text-green-700', 'Payment failed': 'bg-red-100 text-red-700',
     'Rejected': 'bg-slate-100 text-slate-600'
   };
   const columns = [
@@ -93,18 +138,47 @@
     { headerName: 'Status', field: 'status', width: 160,
       cellRenderer: p => pill(p.value, statusCls[p.value] || 'bg-slate-100 text-slate-600') },
     { headerName: '', field: 'id', width: 80, sortable: false,
-      cellRenderer: p => '<a class="text-blue-600 font-medium" href="/manager/issue/' + p.value + '">View</a>' }
+      cellRenderer: p => '<a class="text-blue-600 font-medium" href="/manager/issue/' + p.value +
+        '" data-win="issue-' + p.value + '" data-title="Issue #' + p.value + '">View</a>' }
   ];
   const api = agGrid.createGrid(document.getElementById('grid'), {
-    columnDefs: columns,
-    rowData: rows,
+    columnDefs: columns, rowData: rows,
     defaultColDef: { sortable: true, resizable: true },
-    pagination: true,
-    paginationPageSize: 10,
-    rowHeight: 44
+    pagination: true, paginationPageSize: 10, rowHeight: 44
   });
   document.getElementById('search').addEventListener('input', function (e) {
     api.setGridOption('quickFilterText', e.target.value);
   });
+
+  /* live refresh: banner, stats, guard, feed, grid, and the dock/menu counts */
+  function swap(doc, id) {
+    var a = document.getElementById(id), b = doc.getElementById(id);
+    if (a && b) a.innerHTML = b.innerHTML;
+  }
+  function doRefresh() {
+    fetch('/manager', { credentials: 'same-origin' })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        ['banner', 'stats', 'guard', 'feed'].forEach(function (id) { swap(doc, id); });
+        var nb = doc.getElementById('dock-badge'), cb = document.getElementById('dock-badge');
+        if (nb && cb) {
+          cb.textContent = nb.textContent;
+          cb.classList.toggle('is-hidden', nb.classList.contains('is-hidden'));
+        }
+        var nm = doc.getElementById('mb-att'), cm = document.getElementById('mb-att');
+        if (nm && cm) cm.textContent = nm.textContent;
+      }).catch(function () {});
+    fetch('/manager/issues.json', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { api.setGridOption('rowData', data); })
+      .catch(function () {});
+  }
+  var refreshTimer = null;
+  window.refreshDashboard = function () {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(doRefresh, 250);
+  };
+  setInterval(function () { if (!document.hidden) doRefresh(); }, 12000);
 </script>
 {% endblock %}

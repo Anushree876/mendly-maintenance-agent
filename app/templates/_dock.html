@@ -1,0 +1,17 @@
+{% set n = attention_count() %}
+<nav id="dock" class="dock" aria-label="Dock">
+  <a href="/manager" data-app="dashboard" class="dock-item t-dash is-open">
+    <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    <span class="dock-lbl">Dashboard</span><i class="run"></i>
+  </a>
+  <a href="/manager/attention" data-app="attention" class="dock-item t-att">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <span id="dock-badge" class="dock-badge {% if not n %}is-hidden{% endif %}">{{ n }}</span>
+    <span class="dock-lbl">Needs attention</span><i class="run"></i>
+  </a>
+  <a href="/manager/rules" data-app="rules" class="dock-item t-rules">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8 8 9 4.6-1 8-4 8-9V6l-8-3z"/></svg>
+    <span class="dock-lbl">Rules</span><i class="run"></i>
+  </a>
+  <div id="dock-dyn"></div>
+</nav>
