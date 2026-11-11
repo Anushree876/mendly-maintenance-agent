@@ -58,6 +58,13 @@
     <div class="font-medium">Verified and ready to pay</div>
     <div class="mt-0.5">Pay {{ q.vendor_name }} ${{ "%.2f"|format(q.price) }} through PayPal.</div>
   </div>
+  {% if demo_on() %}{% set pp = demo_paypal() %}{% if pp[0] %}
+  <div class="rounded-xl p-3 mb-3 text-xs" style="background:rgba(99,102,241,.14);border:1px solid rgba(99,102,241,.4)">
+    <div class="font-medium mb-1">PayPal sandbox login for the next screen</div>
+    <div>Email: <span class="select-all">{{ pp[0] }}</span></div>
+    <div>Password: <span class="select-all">{{ pp[1] }}</span></div>
+  </div>
+{% endif %}{% endif %}
   <form method="post" action="/manager/issue/{{ issue.id }}/pay" target="_top">
     <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-5 py-2.5 text-sm font-medium">Approve and pay</button>
   </form>

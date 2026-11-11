@@ -664,17 +664,17 @@ def copy_sample(kind):
     return name
 
 
-@app.get("/demo/manager")
-def demo_manager():
+def demo_manager(next: str = "/manager"):
     if not demo_on():
         raise HTTPException(404, "Not found")
-    resp = RedirectResponse("/manager", status_code=303)
+    if not next.startswith("/manager") or next.startswith("//"):
+        next = "/manager"
+    resp = RedirectResponse(next, status_code=303)
     resp.set_cookie(
         "mendly_auth", _auth_token(), httponly=True, samesite="lax",
         max_age=60 * 60 * 12, secure=os.getenv("BASE_URL", "").startswith("https"),
     )
     return resp
-
 
 @app.get("/demo/vendor")
 def demo_vendor():

@@ -89,7 +89,17 @@
 
   <div class="lg:col-span-2 space-y-4">
 
-    {% if s == 'Work submitted' %}
+    {% if demo and s in ['Needs manager', 'Ready to pay', 'Disputed'] %}
+<div class="glass glow-card p-4 flex items-center justify-between gap-3">
+  <div>
+    <div class="text-sm font-medium">{% if s == 'Ready to pay' %}Ready to pay: manager step{% elif s == 'Disputed' %}Disputed: manager decision needed{% else %}Manager approval needed{% endif %}</div>
+    <div class="text-xs t-soft mt-0.5">Demo shortcut: opens the manager's view of this job.</div>
+  </div>
+  <a href="/demo/manager?next=/manager/issue/{{ issue.id }}" target="_blank" rel="noopener" class="btn-grad rounded-xl px-4 py-2 text-sm whitespace-nowrap">Open dashboard</a>
+</div>
+{% endif %}
+
+{% if s == 'Work submitted' %}
     <div class="glass glow-card p-4">
       <div class="text-sm font-medium mb-3">Is the issue fixed?</div>
       {% if issue.after_photo_path and issue.photo_path %}
