@@ -110,6 +110,12 @@
            class="w-full sm:w-72 border rounded-lg px-3 py-2 text-sm">
   </div>
   <div id="grid" class="ag-theme-alpine" style="height: 440px; width: 100%;"></div>
+  {% if demo_on() %}
+  <form method="post" action="/manager/reset" class="mt-4 text-right"
+        onsubmit="return confirm('Reset all demo data? This deletes every job and photo.');">
+    <button class="chip">Reset demo data</button>
+  </form>
+  {% endif %}
 </section>
 
 <script>

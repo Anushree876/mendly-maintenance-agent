@@ -2,6 +2,7 @@
 {% block title %}Request #{{ issue.id }} | Mendly{% endblock %}
 {% block content %}
 {% from "_macros.html" import badge, urgency_badge %}
+{% from "_compare.html" import compare %}
 {% set s = issue.status %}
 {% set booked_states = ['Scheduled', 'Work submitted', 'Verified', 'Ready to pay', 'Disputed', 'Paid'] %}
 {% set worked_states = ['Verified', 'Ready to pay', 'Paid'] %}
@@ -28,130 +29,167 @@
   ('Work done', s in worked_states),
   ('Paid', s == 'Paid')
 ] %}
-{% set ns = namespace(current=-1) %}
+{% set ns = namespace(current=-1, done=0) %}
 {% for label, done in steps %}
+  {% if done %}{% set ns.done = ns.done + 1 %}{% endif %}
   {% if not done and ns.current == -1 %}{% set ns.current = loop.index0 %}{% endif %}
 {% endfor %}
+{% set pct = ns.done * 20 %}
+{% set off = 326.7 * (1 - pct / 100) %}
 
 <div class="flex items-start justify-between gap-3 mb-1">
-  <h1 class="text-lg font-semibold leading-snug">{{ issue.message }}</h1>
-  <span class="text-xs text-slate-400 shrink-0 pt-1">#{{ issue.id }}</span>
+  <h1 class="text-xl md:text-2xl font-semibold tracking-tight leading-snug">{{ issue.message }}</h1>
+  <span class="text-xs t-muted shrink-0 pt-2">#{{ issue.id }}</span>
 </div>
-<p class="text-sm text-slate-500 mb-3">{{ property.address }}</p>
-<div class="flex items-center gap-2 mb-1">
-  {{ badge(s) }}
-  {{ urgency_badge(issue.urgency) }}
-</div>
-<p class="text-sm text-slate-500 mb-5">{{ hints.get(s, '') }}</p>
-<div class="lg:columns-2 lg:gap-6 cols">
+<p class="text-sm t-soft mb-3">{{ property.address }}</p>
+<div class="flex items-center gap-2 mb-1">{{ badge(s) }}{{ urgency_badge(issue.urgency) }}</div>
+<p class="text-sm t-soft mb-6">{{ hints.get(s, '') }}</p>
 
-<div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
-  <ol>
-    {% for label, done in steps %}
-    <li class="flex gap-3 relative {% if not loop.last %}pb-5{% endif %}">
-      {% if not loop.last %}
-      <span class="absolute left-[11px] top-6 bottom-0 w-px {{ 'bg-blue-600' if done else 'bg-slate-200' }}"></span>
+<div class="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
+
+  <div class="space-y-4 mb-4 lg:mb-0">
+    <div class="glass p-5">
+      <div class="relative w-36 h-36 mx-auto mb-5">
+        <svg viewBox="0 0 120 120" class="w-36 h-36 -rotate-90">
+          <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/>
+          <circle class="ring-fg" cx="60" cy="60" r="52" fill="none" stroke="url(#rg)" stroke-width="10" stroke-linecap="round" style="--off: {{ '%.1f'|format(off) }}"/>
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+          <div class="text-3xl font-semibold">{{ pct }}<span class="text-lg t-soft">%</span></div>
+          <div class="text-[11px] t-muted">complete</div>
+        </div>
+      </div>
+      <ol>
+        {% for label, done in steps %}
+        <li class="flex gap-3 relative {% if not loop.last %}pb-4{% endif %}">
+          {% if not loop.last %}<span class="absolute left-[11px] top-6 bottom-0 w-px" style="background: {{ '#6366f1' if done else 'rgba(148,163,184,.25)' }}"></span>{% endif %}
+          <span class="relative w-6 h-6 rounded-full flex items-center justify-center shrink-0
+            {% if done %}text-white{% elif loop.index0 == ns.current %}step-now{% endif %}"
+            style="{% if done %}background:linear-gradient(135deg,#6366f1,#22d3ee){% elif loop.index0 == ns.current %}border:2px solid #6366f1;background:rgba(99,102,241,.18){% else %}background:rgba(148,163,184,.2){% endif %}">
+            {% if done %}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            {% elif loop.index0 == ns.current %}<span class="w-2 h-2 rounded-full" style="background:#818cf8"></span>{% endif %}
+          </span>
+          <div class="text-sm pt-0.5 {% if done or loop.index0 == ns.current %}font-medium{% else %}t-muted{% endif %}">{{ label }}</div>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    {% if vendor %}
+    <div class="glass p-4 flex items-center gap-3">
+      <div class="w-11 h-11 rounded-full flex items-center justify-center font-semibold text-white" style="background:linear-gradient(135deg,#6366f1,#22d3ee)">{{ vendor.vendor_name[0] }}</div>
+      <div>
+        <div class="text-sm font-medium">{{ vendor.vendor_name }}</div>
+        <div class="text-xs t-soft">Earliest visit {{ vendor.earliest_date }}</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="lg:col-span-2 space-y-4">
+
+    {% if s == 'Work submitted' %}
+    <div class="glass glow-card p-4">
+      <div class="text-sm font-medium mb-3">Is the issue fixed?</div>
+      {% if issue.after_photo_path and issue.photo_path %}
+      {{ compare(issue.photo_path, issue.after_photo_path, 't' ~ issue.id) }}
+      <p class="text-xs t-muted mt-2 mb-3">Drag the slider to compare before and after.</p>
       {% endif %}
-      <span class="relative w-6 h-6 rounded-full flex items-center justify-center shrink-0
-        {% if done %}bg-blue-600 text-white{% elif loop.index0 == ns.current %}border-2 border-blue-600 bg-white{% else %}bg-slate-200{% endif %}">
-        {% if done %}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        {% elif loop.index0 == ns.current %}
-          <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+      <form method="post" action="/status/{{ issue.id }}/confirm" class="flex gap-2">
+        <button name="answer" value="yes" class="flex-1 bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium">Yes, fixed</button>
+        <button name="answer" value="no" class="flex-1 border border-slate-300 rounded-lg py-2.5 text-sm font-medium">No, still broken</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if s == 'Paid' and payment %}
+    <div class="banner-ok rounded-2xl p-5 flex items-center gap-4">
+      <div class="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style="background:rgba(52,211,153,.2);color:#34d399">
+        <svg class="check-draw" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <div>
+        <div class="text-lg font-semibold">${{ "%.2f"|format(payment.amount) }} paid</div>
+        <div class="text-sm t-soft">Payment for {{ payment.vendor_name }} was completed through PayPal.</div>
+        <div class="text-xs t-muted mt-1">PayPal sandbox demo. No real money moves.</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="glass p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm font-medium">Your report</div>
+        {% if ai_used %}<span class="pill pill-teal">AI analyzed</span>{% elif issue.repair_type %}<span class="pill pill-slate">Estimated from your message</span>{% endif %}
+      </div>
+      {% if issue.photo_path %}
+      <div class="scanbox {% if scan and ai_used %}scan-run{% endif %}">
+        <img src="/static/uploads/{{ issue.photo_path }}" class="w-full block" alt="Your photo">
+        <div class="scanline"></div>
+        {% if issue.repair_type %}
+        <div class="scan-tags">
+          <span class="stag" style="animation-delay:2.3s"><i class="sdot" style="background:#22d3ee"></i>{{ issue.repair_type|capitalize }} issue</span>
+          <span class="stag" style="animation-delay:2.7s"><i class="sdot" style="background: {{ '#f87171' if issue.urgency == 'high' else ('#fbbf24' if issue.urgency == 'medium' else '#34d399') }}"></i>Urgency: {{ (issue.urgency or '')|capitalize }}</span>
+          <span class="stag" style="animation-delay:3.1s"><i class="sdot" style="background:#a78bfa"></i>Est. ${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}</span>
+        </div>
         {% endif %}
-      </span>
-      <div class="text-sm pt-0.5 {% if done or loop.index0 == ns.current %}font-medium text-slate-800{% else %}text-slate-400{% endif %}">{{ label }}</div>
-    </li>
-    {% endfor %}
-  </ol>
-</div>
+      </div>
+      {% endif %}
+      {% if issue.ai_summary %}
+      <p class="text-sm mt-3">{{ issue.ai_summary }}</p>
+      {% endif %}
+    </div>
 
-{% if vendor %}
-<div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-4 flex items-center gap-3">
-  <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-semibold">{{ vendor.vendor_name[0] }}</div>
-  <div>
-    <div class="text-sm font-medium">{{ vendor.vendor_name }}</div>
-    <div class="text-xs text-slate-500">Earliest visit {{ vendor.earliest_date }}</div>
-  </div>
-</div>
-{% endif %}
+    {% if issue.after_photo_path and issue.photo_path and s != 'Work submitted' %}
+    <div class="glass p-4">
+      <div class="text-sm font-medium mb-3">Before and after</div>
+      {{ compare(issue.photo_path, issue.after_photo_path, 't' ~ issue.id) }}
+    </div>
+    {% endif %}
 
-{% if s == 'Work submitted' %}
-<div class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm mb-4">
-  <div class="text-sm font-medium mb-3">Is the issue fixed?</div>
-  {% if issue.after_photo_path %}
-  <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full mb-3" alt="After photo">
-  {% endif %}
-  <form method="post" action="/status/{{ issue.id }}/confirm" class="flex gap-2">
-    <button name="answer" value="yes" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium">Yes, fixed</button>
-    <button name="answer" value="no" class="flex-1 border border-slate-300 rounded-lg py-2.5 text-sm font-medium">No, still broken</button>
-  </form>
-</div>
-{% endif %}
+    <details class="glass p-4">
+      <summary class="text-sm font-medium cursor-pointer">Activity</summary>
+      <ul class="mt-3 space-y-3">
+        {% for e in events %}
+        <li class="text-sm">
+          <div class="font-medium">{{ e.action }}</div>
+          {% if e.reason %}<div class="t-soft">{{ e.reason }}</div>{% endif %}
+          <div class="text-xs t-muted">{{ e.created_at|replace('T', ' ') }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
 
-<div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
-  <div class="text-sm font-medium mb-2">Your report</div>
-  {% if issue.photo_path %}
-  <img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg w-full mb-3" alt="Your photo">
-  {% endif %}
-  {% if issue.ai_summary %}
-  <div class="text-xs uppercase tracking-wide text-slate-400 mb-1">AI summary</div>
-  <p class="text-sm text-slate-700 mb-3">{{ issue.ai_summary }}</p>
-  <div class="grid grid-cols-2 gap-3 text-sm">
-    <div><div class="text-xs text-slate-400">Repair type</div><div class="font-medium capitalize">{{ issue.repair_type }}</div></div>
-    <div><div class="text-xs text-slate-400">Estimated cost</div>
-      <div class="font-medium">${{ "%.0f"|format(issue.est_low or 0) }} to ${{ "%.0f"|format(issue.est_high or 0) }}</div></div>
-  </div>
-  {% endif %}
-</div>
-
-{% if issue.after_photo_path and s != 'Work submitted' %}
-<div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
-  <div class="text-sm font-medium mb-2">After photo from the vendor</div>
-  <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full" alt="After photo">
-</div>
-{% endif %}
-
-<details class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4">
-  <summary class="text-sm font-medium cursor-pointer">Activity</summary>
-  <ul class="mt-3 space-y-3">
-    {% for e in events %}
-    <li class="text-sm">
-      <div class="font-medium">{{ e.action }}</div>
-      {% if e.reason %}<div class="text-slate-500">{{ e.reason }}</div>{% endif %}
-      <div class="text-xs text-slate-400">{{ e.created_at }}</div>
-    </li>
-    {% endfor %}
-  </ul>
-</details>
-
-{% if demo and quotes %}
-<details class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-  <summary class="text-sm font-medium cursor-pointer text-amber-900">Demo tools</summary>
-  <div class="mt-3 text-sm space-y-2">
-    <a class="text-blue-600 underline block" href="/manager/issue/{{ issue.id }}">Open manager view</a>
+    {% if demo and quotes %}
+<div class="rounded-2xl p-4" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35)">
+  <div class="text-sm font-medium t-amber mb-3">Demo tools</div>
+  <div class="text-sm space-y-3">
+    <a class="text-blue-600 underline block" target="_blank" href="/manager/issue/{{ issue.id }}">Open manager view</a>
     {% for q in quotes %}
     <div class="flex justify-between items-center gap-2">
-      <span>{{ q.vendor_name }}{% if not q.is_simulated %} (real vendor){% endif %}</span>
-      {% if not q.is_simulated and q.status in ('invited', 'accepted') %}
-        <a class="text-blue-600 underline" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Open vendor link</a>
+      <span>{{ q.vendor_name }}{% if not q.is_simulated %} (demo vendor){% endif %}</span>
+      {% if q.status == 'accepted' %}
+        <a class="btn-grad rounded-lg px-3 py-1.5 text-xs" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Selected vendor link</a>
+      {% elif not q.is_simulated and q.status == 'invited' %}
+        <a class="btn-grad rounded-lg px-3 py-1.5 text-xs" target="_blank" href="{{ base_url }}/v/{{ q.token }}">Bid as demo vendor</a>
       {% elif q.price %}
-        <span class="text-slate-500">${{ "%.0f"|format(q.price) }} {{ q.status }}</span>
+        <span class="t-soft">${{ "%.0f"|format(q.price) }} {{ q.status }}</span>
       {% else %}
-        <span class="text-slate-400">waiting...</span>
+        <span class="t-muted">waiting...</span>
       {% endif %}
     </div>
     {% endfor %}
   </div>
-</details>
-{% endif %}
-
 </div>
-{% if s in ('New', 'Analyzed', 'Quotes requested', 'Quotes received') %}
+{% endif %}
+  </div>
+</div>
+
 <script>
+  if (location.search.indexOf('new=1') > -1) { history.replaceState(null, '', location.pathname); }
+  {% if s in ('New', 'Analyzed', 'Quotes requested', 'Quotes received', 'Needs manager', 'Scheduled', 'Verified', 'Ready to pay') %}
   setTimeout(function () {
     if (!document.querySelector('details[open]')) { location.reload(); }
-  }, 5000);
+  }, 6000);
+  {% endif %}
 </script>
-{% endif %}
 {% endblock %}

@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from app import ai, db
+from app import ai, db, mailer
 
 UPLOAD_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "static", "uploads"
@@ -48,14 +48,27 @@ def invite_vendors(issue_id, max_vendors=3):
         db.set_status(issue_id, db.S_NEEDS_MANAGER, actor="agent",
                       reason=f"No approved {issue['repair_type']} vendors")
         return
+    invites = []
     for v in vendors:
+        token = secrets.token_urlsafe(16)
         conn.execute(
             """INSERT INTO quotes (issue_id, vendor_id, token, status, created_at)
                VALUES (?,?,?,?,?)""",
-            (issue_id, v["id"], secrets.token_urlsafe(16), "invited", db.now()),
+            (issue_id, v["id"], token, "invited", db.now()),
         )
+        invites.append((dict(v), token))
     conn.commit()
     conn.close()
+    base = os.getenv("BASE_URL", "http://127.0.0.1:8000")
+    for v, token in invites:
+        if not v["is_simulated"]:
+            mailer.send_async(
+                os.getenv("REAL_VENDOR_EMAIL") or v["email"],
+                f"New {issue['repair_type']} job to quote",
+                f"Hi {v['name']},\n\nA tenant reported: {issue['message']}\n"
+                f"AI summary: {issue['ai_summary']}\n\n"
+                f"Send your quote here (private link):\n{base}/v/{token}\n\n- Mendly",
+            )
 
     names = ", ".join(v["name"] for v in vendors)
     db.add_event(issue_id, "agent", f"{len(vendors)} vendors invited for quotes", names)
@@ -175,8 +188,8 @@ def evaluate_quotes(issue_id):
 def select_vendor(issue_id, quote_id, actor, reason):
     conn = db.get_conn()
     q = conn.execute(
-        """SELECT q.*, v.name AS vendor_name FROM quotes q
-           JOIN vendors v ON v.id = q.vendor_id WHERE q.id = ?""",
+        """SELECT q.*, v.name AS vendor_name, v.is_simulated AS is_sim, v.email AS vemail
+           FROM quotes q JOIN vendors v ON v.id = q.vendor_id WHERE q.id = ?""",
         (quote_id,),
     ).fetchone()
     conn.execute("UPDATE quotes SET status = 'accepted' WHERE id = ?", (quote_id,))
@@ -195,6 +208,14 @@ def select_vendor(issue_id, quote_id, actor, reason):
     db.add_event(issue_id, actor, f"Approved {q['vendor_name']} at ${q['price']:.0f}", reason)
     db.add_event(issue_id, "agent", "Other vendors told: not selected", "Their links are now closed")
     db.set_status(issue_id, db.S_SCHEDULED, actor=actor, reason=f"{q['vendor_name']} booked")
+    if not q["is_sim"]:
+        base = os.getenv("BASE_URL", "http://127.0.0.1:8000")
+        mailer.send_async(
+            os.getenv("REAL_VENDOR_EMAIL") or q["vemail"],
+            "You were selected for the job",
+            f"You were selected at ${q['price']:.0f}.\n"
+            f"When the work is done, upload a completion photo here:\n{base}/v/{q['token']}\n\n- Mendly",
+        )
 
 
 def reject_issue(issue_id, reason):

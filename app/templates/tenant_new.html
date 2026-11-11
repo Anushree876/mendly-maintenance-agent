@@ -23,6 +23,8 @@
           </div>
         </label>
         <input id="photo" type="file" name="photo" accept="image/*" required class="sr-only">
+        <input type="hidden" name="use_sample" id="use_sample" value="">
+        {% if demo_on() %}<button type="button" id="sample-btn" class="chip mt-3">Use a sample photo</button>{% endif %}
       </div>
 
       <div class="space-y-5">
@@ -59,6 +61,24 @@
     r.readAsDataURL(f);
   });
   var msg = document.getElementById('message');
+  var sampleBtn = document.getElementById('sample-btn');
+  if (sampleBtn) sampleBtn.addEventListener('click', function () {
+    document.getElementById('use_sample').value = '1';
+    photo.removeAttribute('required');
+    photo.value = '';
+    var p = document.getElementById('preview');
+    p.src = '/static/samples/before.jpg';
+    p.classList.remove('hidden');
+    document.getElementById('placeholder').classList.add('hidden');
+    if (!msg.value.trim()) {
+      msg.value = 'Kitchen sink is leaking';
+      document.getElementById('count').textContent = msg.value.length + '/500';
+    }
+  });
+  photo.addEventListener('change', function () {
+    document.getElementById('use_sample').value = '';
+    photo.setAttribute('required', 'required');
+  });
   msg.addEventListener('input', function () {
     document.getElementById('count').textContent = msg.value.length + '/500';
   });

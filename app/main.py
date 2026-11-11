@@ -1,16 +1,17 @@
 import hashlib
 import hmac
 import os
+import shutil
 import uuid
 from datetime import datetime
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image
 
-from app import agent, db, paypal
+from app import agent, db, paypal, seed
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -19,6 +20,14 @@ os.makedirs(agent.UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+def _asset_v():
+    try:
+        return int(os.path.getmtime(os.path.join(BASE_DIR, "static", "theme.css")))
+    except OSError:
+        return 0
+
+
+templates.env.globals["asset_v"] = _asset_v
 
 @app.on_event("startup")
 def startup():
@@ -34,8 +43,8 @@ def save_photo(upload: UploadFile):
 
 
 @app.get("/")
-def home():
-    return RedirectResponse("/report/OAK12")
+def home(request: Request):
+    return templates.TemplateResponse(request, "landing.html", {})
 
 
 @app.get("/report/{code}")
@@ -51,9 +60,10 @@ def report_form(request: Request, code: str):
 @app.post("/report/{code}")
 def report_submit(
     code: str,
-    photo: UploadFile = File(...),
+    photo: UploadFile = File(None),
     message: str = Form(...),
     tenant_name: str = Form("Tenant"),
+    use_sample: str = Form(""),
 ):
     conn = db.get_conn()
     prop = conn.execute("SELECT * FROM properties WHERE code = ?", (code,)).fetchone()
@@ -62,7 +72,7 @@ def report_submit(
         raise HTTPException(404, "Property not found")
 
     try:
-        photo_name = save_photo(photo)
+        photo_name = copy_sample("before") if (use_sample == "1" and demo_on()) else save_photo(photo)
     except Exception:
         conn.close()
         raise HTTPException(400, "Could not read that image. Please upload a JPG or PNG.")
@@ -78,7 +88,7 @@ def report_submit(
 
     db.add_event(issue_id, "tenant", "Issue reported", message[:200])
     agent.start(issue_id)
-    return RedirectResponse(f"/status/{issue_id}", status_code=303)
+    return RedirectResponse(f"/status/{issue_id}?new=1", status_code=303)
 
 
 @app.get("/status/{issue_id}")
@@ -100,7 +110,10 @@ def status_page(request: Request, issue_id: int):
         request, "tenant_status.html",
         {"issue": issue, "property": dict(prop), "events": events,
          "quotes": quotes, "base_url": base_url,
-         "demo": os.getenv("DEMO_MODE", "false").lower() == "true"},
+         "demo": os.getenv("DEMO_MODE", "false").lower() == "true",
+         "scan": request.query_params.get("new") == "1",
+         "ai_used": any(e["action"] == "AI analyzed photo" for e in events),
+         "payment": payment_for(issue_id)},
     )
 def get_quote_by_token(token):
     conn = db.get_conn()
@@ -124,7 +137,8 @@ def vendor_page(request: Request, token: str):
     conn.close()
     return templates.TemplateResponse(
         request, "vendor_issue.html",
-        {"quote": quote, "issue": issue, "property": dict(prop)},
+        {"quote": quote, "issue": issue, "property": dict(prop),
+         "payment": payment_for(issue["id"])},
     )
 
 
@@ -214,7 +228,7 @@ def manager_reject(issue_id: int):
     return RedirectResponse(f"/manager/issue/{issue_id}", status_code=303)
 
 @app.post("/v/{token}/done")
-def vendor_done(token: str, after_photo: UploadFile = File(...)):
+def vendor_done(token: str, after_photo: UploadFile = File(None), use_sample: str = Form("")):
     quote = get_quote_by_token(token)
     if not quote:
         raise HTTPException(404, "This link is not valid.")
@@ -222,7 +236,7 @@ def vendor_done(token: str, after_photo: UploadFile = File(...)):
     if quote["status"] != "accepted" or issue["status"] != db.S_SCHEDULED:
         raise HTTPException(400, "This job is not open for a completion photo.")
     try:
-        name = save_photo(after_photo)
+        name = copy_sample("after") if (use_sample == "1" and demo_on()) else save_photo(after_photo)
     except Exception:
         raise HTTPException(400, "Could not read that image. Please upload a JPG or PNG.")
 
@@ -617,3 +631,91 @@ def manager_rules_page(request: Request):
 def manager_issues_json():
     stats, issues = dashboard_data()
     return JSONResponse(issues)
+
+def payment_for(issue_id):
+    conn = db.get_conn()
+    row = conn.execute(
+        """SELECT p.*, v.name AS vendor_name FROM payments p
+           JOIN vendors v ON v.id = p.vendor_id
+           WHERE p.issue_id = ? AND p.paypal_status = 'COMPLETED'
+           ORDER BY p.id DESC LIMIT 1""",
+        (issue_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+# ---------- Demo mode helpers ----------
+
+def demo_on():
+    return os.getenv("DEMO_MODE", "false").lower() == "true"
+
+
+templates.env.globals["demo_on"] = demo_on
+templates.env.globals["demo_paypal"] = lambda: (
+    os.getenv("DEMO_PAYPAL_EMAIL", ""), os.getenv("DEMO_PAYPAL_PASSWORD", ""))
+
+SAMPLE_DIR = os.path.join(BASE_DIR, "static", "samples")
+
+
+def copy_sample(kind):
+    name = f"{uuid.uuid4().hex}.jpg"
+    shutil.copyfile(os.path.join(SAMPLE_DIR, f"{kind}.jpg"),
+                    os.path.join(agent.UPLOAD_DIR, name))
+    return name
+
+
+@app.get("/demo/manager")
+def demo_manager():
+    if not demo_on():
+        raise HTTPException(404, "Not found")
+    resp = RedirectResponse("/manager", status_code=303)
+    resp.set_cookie(
+        "mendly_auth", _auth_token(), httponly=True, samesite="lax",
+        max_age=60 * 60 * 12, secure=os.getenv("BASE_URL", "").startswith("https"),
+    )
+    return resp
+
+
+@app.get("/demo/vendor")
+def demo_vendor():
+    if not demo_on():
+        raise HTTPException(404, "Not found")
+    conn = db.get_conn()
+    issue = conn.execute(
+        """SELECT id FROM issues WHERE tenant_name != 'Past tenant'
+           AND id IN (SELECT DISTINCT issue_id FROM quotes) ORDER BY id DESC LIMIT 1"""
+    ).fetchone()
+    token = None
+    if issue:
+        rows = conn.execute(
+            """SELECT q.token, q.status, v.is_simulated FROM quotes q
+               JOIN vendors v ON v.id = q.vendor_id WHERE q.issue_id = ? ORDER BY q.id""",
+            (issue["id"],),
+        ).fetchall()
+        pick = ([r for r in rows if r["status"] == "accepted"]
+                or [r for r in rows if not r["is_simulated"]] or list(rows))
+        token = pick[0]["token"] if pick else None
+    conn.close()
+    if not token:
+        return HTMLResponse(
+            "<body style='font-family:sans-serif;background:#0a0e1a;color:#e8ebf5;padding:40px'>"
+            "<h2>No job yet</h2><p>Submit a tenant report first, then come back to the vendor page.</p>"
+            "<a style='color:#7cc0ff' href='/report/OAK12'>Report a problem</a></body>"
+        )
+    return RedirectResponse(f"/v/{token}", status_code=303)
+
+
+@app.post("/manager/reset")
+def manager_reset():
+    if not demo_on():
+        raise HTTPException(404, "Not found")
+    try:
+        for f in os.listdir(agent.UPLOAD_DIR):
+            try:
+                os.remove(os.path.join(agent.UPLOAD_DIR, f))
+            except OSError:
+                pass
+        seed.run()
+    except Exception as e:
+        raise HTTPException(500, f"Reset failed: {str(e)[:100]}")
+    return RedirectResponse("/manager", status_code=303)

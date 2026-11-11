@@ -2,80 +2,105 @@
 {% block title %}Job request | Mendly{% endblock %}
 {% block content %}
 {% from "_macros.html" import urgency_badge %}
+{% set vs = quote.status %}
+{% set vsteps = [
+  ('Quote sent', vs in ('submitted', 'recommended', 'accepted', 'declined')),
+  ('Selected', vs == 'accepted'),
+  ('Work done', vs == 'accepted' and issue.after_photo_path),
+  ('Paid', vs == 'accepted' and issue.status == 'Paid')
+] %}
 <div class="max-w-5xl mx-auto">
   <div class="flex items-start justify-between gap-3 mb-1">
-    <h1 class="text-lg md:text-2xl font-semibold">Job request</h1>
+    <h1 class="text-xl md:text-2xl font-semibold tracking-tight">Job request</h1>
     {{ urgency_badge(issue.urgency) }}
   </div>
-  <p class="text-sm text-slate-500">{{ property.address }}</p>
-  <p class="text-xs text-slate-400 mb-5">Quote for {{ quote.vendor_name }}</p>
+  <p class="text-sm t-soft">{{ property.address }}</p>
+  <p class="text-xs t-muted mb-4">Quote for {{ quote.vendor_name }}</p>
+
+  <ol class="flex flex-wrap gap-2 mb-5">
+    {% for label, done in vsteps %}
+    <li class="pill {{ 'pill-teal' if done else 'pill-slate' }} inline-flex items-center gap-1.5">
+      {% if done %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>{% endif %}{{ label }}
+    </li>
+    {% endfor %}
+  </ol>
 
   <div class="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
-    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-4 lg:mb-0">
+    <div class="glass p-4 mb-4 lg:mb-0">
       {% if issue.photo_path %}
-      <img src="/static/uploads/{{ issue.photo_path }}" class="rounded-lg w-full mb-3" alt="Issue photo">
+      <img src="/static/uploads/{{ issue.photo_path }}" class="rounded-xl w-full mb-3" alt="Issue photo">
       {% endif %}
       <div class="text-sm font-medium capitalize">{{ issue.repair_type }} repair</div>
-      <p class="text-sm text-slate-600 mt-1">{{ issue.message }}</p>
-      {% if issue.ai_summary %}<p class="text-xs text-slate-400 mt-2">{{ issue.ai_summary }}</p>{% endif %}
+      <p class="text-sm t-soft mt-1">{{ issue.message }}</p>
+      {% if issue.ai_summary %}<p class="text-xs t-muted mt-2">{{ issue.ai_summary }}</p>{% endif %}
     </div>
 
     <div>
       {% if quote.status == 'invited' %}
-      <form method="post" action="/v/{{ quote.token }}/quote"
-            class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-4 mb-4">
+      <form method="post" action="/v/{{ quote.token }}/quote" class="glass p-4 space-y-4 mb-4">
         <h2 class="text-sm font-medium">Submit quote</h2>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs text-slate-500 mb-1" for="price">Price ($)</label>
+            <label class="block text-xs t-soft mb-1" for="price">Price ($)</label>
             <input id="price" type="number" step="0.01" min="1" name="price" required placeholder="e.g. 185"
-                   class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                   class="w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
           <div>
-            <label class="block text-xs text-slate-500 mb-1" for="earliest_date">Earliest date</label>
+            <label class="block text-xs t-soft mb-1" for="earliest_date">Earliest date</label>
             <input id="earliest_date" type="date" name="earliest_date" required
-                   class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                   class="w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
         </div>
         <div>
-          <label class="block text-xs text-slate-500 mb-1" for="notes">Notes (optional)</label>
+          <label class="block text-xs t-soft mb-1" for="notes">Notes (optional)</label>
           <textarea id="notes" name="notes" rows="3" maxlength="500" placeholder="Any additional details..."
-                    class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    class="w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
         </div>
-        <button class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-3 text-sm font-medium">Submit quote</button>
+        <button class="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium">Submit quote</button>
       </form>
 
       {% elif quote.status == 'accepted' %}
-      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm">
-        <div class="font-medium text-blue-800">You have been selected</div>
-        <div class="text-blue-700 mt-1">${{ "%.0f"|format(quote.price) }}, start {{ quote.earliest_date }}</div>
+      <div class="rounded-2xl p-4 mb-4 text-sm" style="background:rgba(99,102,241,.16);border:1px solid rgba(99,102,241,.4)">
+        <div class="font-medium">You have been selected</div>
+        <div class="t-soft mt-1">${{ "%.0f"|format(quote.price) }}, start {{ quote.earliest_date }}</div>
       </div>
       {% if issue.status == 'Scheduled' %}
-      <form method="post" action="/v/{{ quote.token }}/done" enctype="multipart/form-data"
-            class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3"
+      <form method="post" action="/v/{{ quote.token }}/done" enctype="multipart/form-data" class="glass p-4 space-y-3"
             onsubmit="var b=this.querySelector('button[type=submit]'); setTimeout(function () { b.disabled = true; b.textContent = 'Uploading...'; }, 0);">
         <h2 class="text-sm font-medium">Job done? Upload a completion photo</h2>
-        <input type="file" name="after_photo" accept="image/*" required
-               class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">
-        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-3 text-sm font-medium disabled:opacity-60">Mark as done</button>
+        <input type="file" name="after_photo" id="after_photo" accept="image/*" required class="w-full border rounded-lg p-2 text-sm">
+        <input type="hidden" name="use_sample" id="use_sample" value="">
+        {% if demo_on() %}<button type="button" class="chip" onclick="document.getElementById('use_sample').value='1';var f=document.getElementById('after_photo');f.removeAttribute('required');f.value='';this.textContent='Sample after photo selected';">Use a sample after photo</button>{% endif %}
+        <button type="submit" class="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium disabled:opacity-60">Mark as done</button>
       </form>
+      {% elif issue.status == 'Paid' and payment %}
+      <div class="glass glow-card p-5 text-center">
+        <div class="mx-auto w-14 h-14 rounded-full flex items-center justify-center mb-3" style="background:rgba(52,211,153,.18);color:#34d399">
+          <svg class="check-draw" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <div class="text-3xl font-semibold">${{ "%.2f"|format(payment.amount) }}</div>
+        <div class="text-sm t-soft mt-1">Payment recorded through PayPal</div>
+        <ol class="text-left text-sm mt-4 space-y-2 inline-block">
+          <li><span class="t-muted">Approved</span> &nbsp; {{ payment.created_at|replace('T', ' ')|truncate(16, True, '') }}</li>
+          <li><span class="t-muted">Paid</span> &nbsp; {{ (issue.closed_at or '')|replace('T', ' ')|truncate(16, True, '') }}</li>
+        </ol>
+        <div class="text-[11px] t-muted mt-3">PayPal sandbox demo. No real money moves.</div>
+      </div>
       {% else %}
-      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-sm text-slate-600">
-        Completion photo submitted. Current status: <span class="font-medium">{{ issue.status }}</span>.
+      <div class="glass p-4 text-sm t-soft">
+        Completion photo submitted. Current status: <span class="font-medium" style="color:#e8ebf5">{{ issue.status }}</span>.
       </div>
       {% endif %}
 
       {% elif quote.status in ('submitted', 'recommended') %}
-      <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-sm">
-        <div class="font-medium text-green-800">Quote submitted</div>
-        <div class="text-green-700 mt-1">${{ "%.0f"|format(quote.price) }}, earliest {{ quote.earliest_date }}</div>
-        <div class="text-green-700 mt-1">We will contact you if you are selected.</div>
+      <div class="rounded-2xl p-4 mb-4 text-sm" style="background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.4)">
+        <div class="font-medium" style="color:#86efac">Quote submitted</div>
+        <div class="t-soft mt-1">${{ "%.0f"|format(quote.price) }}, earliest {{ quote.earliest_date }}</div>
+        <div class="t-soft mt-1">We will contact you if you are selected.</div>
       </div>
 
       {% else %}
-      <div class="bg-slate-100 border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
-        This job is no longer open for quotes.
-      </div>
+      <div class="glass p-4 text-sm t-soft">This job is no longer open for quotes.</div>
       {% endif %}
     </div>
   </div>

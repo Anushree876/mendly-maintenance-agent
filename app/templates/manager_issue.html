@@ -73,6 +73,16 @@
 </div>
 {% endif %}
 
+{% for q in quotes if q.status == 'accepted' and s in ('Scheduled', 'Work submitted') %}
+<div class="glass p-4 mb-6 flex flex-wrap items-center justify-between gap-3 text-sm">
+  <div>
+    <div class="font-medium">Vendor page: {{ q.vendor_name }}</div>
+    <div class="t-soft text-xs">The private link the vendor uses to upload the completion photo.</div>
+  </div>
+  <a href="/v/{{ q.token }}" target="_blank" class="btn-grad rounded-xl px-4 py-2">Open vendor page</a>
+</div>
+{% endfor %}
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
   <div class="space-y-6">
     <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
@@ -98,7 +108,13 @@
     {% if issue.after_photo_path %}
     <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
       <div class="text-sm font-medium mb-3">After photo</div>
+      {% if issue.photo_path %}
+      {% from "_compare.html" import compare %}
+      {{ compare(issue.photo_path, issue.after_photo_path, 'm' ~ issue.id) }}
+      <div class="mb-3"></div>
+      {% else %}
       <img src="/static/uploads/{{ issue.after_photo_path }}" class="rounded-lg w-full mb-3" alt="After photo">
+      {% endif %}
       {% if issue.verify_confidence is not none %}
       <div class="text-sm text-slate-600">
         <span class="font-medium">Photo check: {{ "%.0f"|format(issue.verify_confidence * 100) }}% confidence.</span>

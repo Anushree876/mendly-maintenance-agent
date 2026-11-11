@@ -2,6 +2,8 @@ import os
 import sqlite3
 from datetime import datetime
 
+from app import mailer
+
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mendly.db"
 )
@@ -105,6 +107,8 @@ def set_status(issue_id, status, actor="system", reason=""):
     conn.commit()
     conn.close()
     add_event(issue_id, actor, f"Status: {status}", reason)
+    if status in (S_NEEDS_MANAGER, S_DISPUTED, S_READY_TO_PAY):
+        mailer.notify_manager(issue_id, status, reason)
 
 
 def get_settings():

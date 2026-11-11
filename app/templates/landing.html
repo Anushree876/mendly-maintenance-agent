@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Mendly | AI agent for property repairs{% endblock %}
+{% block content %}
+{% set pp = demo_paypal() %}
+<div class="max-w-4xl mx-auto text-center pt-4 sm:pt-10">
+  <div class="logo-tile logo-lg flex items-center justify-center mx-auto mb-5"><img src="/static/logo.png" alt="Mendly"></div>
+  <h1 class="text-4xl sm:text-6xl font-semibold tracking-tight grad-text">Mendly</h1>
+  <p class="text-lg sm:text-xl t-soft mt-4 max-w-2xl mx-auto">An AI agent that turns a repair photo into a paid job, inside the spending rules a property manager sets.</p>
+</div>
+
+<div class="max-w-4xl mx-auto mt-10 grid grid-cols-1 {% if demo_on() %}md:grid-cols-2{% endif %} gap-4">
+  <a href="/report/OAK12" target="_blank" rel="noopener" class="glass p-5 block hover:brightness-110">
+    <span class="pill pill-teal">{% if demo_on() %}Step 1{% else %}Tenant{% endif %}</span>
+    <div class="text-lg font-semibold mt-3">Tenant</div>
+    <p class="text-sm t-soft mt-1">Report a problem with a photo. {% if demo_on() %}Tap "Use a sample photo" to try it fast. {% endif %}The AI reads it in seconds.</p>
+    <div class="btn-grad rounded-xl py-2.5 text-center text-sm mt-4">Report a problem</div>
+  </a>
+  {% if demo_on() %}
+  
+  <a href="/demo/manager" target="_blank" rel="noopener" class="glass p-5 block hover:brightness-110">
+    <span class="pill pill-teal">Step 2</span>
+    <div class="text-lg font-semibold mt-3">Manager</div>
+    <p class="text-sm t-soft mt-1">Signs you in. See the dashboard, the stuck jobs, the audit trail, and approve the PayPal payment.</p>
+    <div class="btn-grad rounded-xl py-2.5 text-center text-sm mt-4">Open dashboard</div>
+  </a>
+  {% endif %}
+</div>
+
+{% if demo_on() %}
+<p class="max-w-4xl mx-auto text-xs t-muted mt-3 text-center">Start with Tenant. On the tenant status page, a Demo tools box lets you bid as the vendor. In real use, vendors get an email link and the manager signs in with a password.</p>
+{% else %}
+<p class="text-center mt-5 text-sm"><a href="/login" target="_blank" rel="noopener" class="t-soft underline">Manager sign in</a></p>
+{% endif %}
+
+<div class="max-w-4xl mx-auto mt-8 glass p-5 text-sm">
+  <div class="font-medium mb-2">Good to know</div>
+  <ul class="space-y-1.5 t-soft list-disc pl-5">
+    <li>Gemini AI reads the photos. PayPal Orders handles the payment. The manager's rules stay in control.</li>
+    <li>Two of the three vendors are simulated for the demo. The vendor page and the payment are real.</li>
+    <li>PayPal runs in sandbox mode, so no real money moves.</li>
+  </ul>
+  {% if demo_on() and pp[0] %}
+  <div class="mt-4 rounded-xl p-3" style="background:rgba(99,102,241,.14);border:1px solid rgba(99,102,241,.4)">
+    <div class="font-medium">PayPal sandbox login (for the Approve and pay screen)</div>
+    <div class="t-soft mt-1">Email: <span class="select-all" style="color:#e8ebf5">{{ pp[0] }}</span></div>
+    <div class="t-soft">Password: <span class="select-all" style="color:#e8ebf5">{{ pp[1] }}</span></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

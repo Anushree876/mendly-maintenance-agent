@@ -1,0 +1,20 @@
+{% macro compare(before, after, uid) %}
+<div class="cmp" id="cmp-{{ uid }}">
+  <img class="cmp-img" src="/static/uploads/{{ after }}" alt="After">
+  <img class="cmp-img cmp-top" src="/static/uploads/{{ before }}" alt="Before" style="clip-path:inset(0 50% 0 0)">
+  <span class="cmp-tag" style="left:10px">Before</span>
+  <span class="cmp-tag" style="right:10px">After</span>
+  <div class="cmp-bar" style="left:50%"><span class="cmp-knob">&#8596;</span></div>
+  <input type="range" min="0" max="100" value="50" class="cmp-range" aria-label="Before and after slider">
+</div>
+<script>
+(function () {
+  var r = document.getElementById('cmp-{{ uid }}');
+  if (!r) return;
+  var top = r.querySelector('.cmp-top'), bar = r.querySelector('.cmp-bar'), inp = r.querySelector('.cmp-range');
+  function set(v) { top.style.clipPath = 'inset(0 ' + (100 - v) + '% 0 0)'; bar.style.left = v + '%'; }
+  inp.addEventListener('input', function () { set(inp.value); });
+  set(50);
+})();
+</script>
+{% endmacro %}
