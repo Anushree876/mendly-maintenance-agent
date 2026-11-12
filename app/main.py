@@ -664,6 +664,7 @@ def copy_sample(kind):
     return name
 
 
+@app.get("/demo/manager")
 def demo_manager(next: str = "/manager"):
     if not demo_on():
         raise HTTPException(404, "Not found")
