@@ -310,7 +310,7 @@ def manager_pay(issue_id: int):
         order_id, approve_url = paypal.create_order(
             amount=q["price"],
             issue_id=issue_id,
-            request_id=f"mendly-issue-{issue_id}-{attempts + 1}",
+            request_id=f"mendly-{''.join(ch for ch in issue['created_at'] if ch.isalnum())}-{issue_id}-{attempts + 1}",
             return_url=f"{base_url}/paypal/return?issue_id={issue_id}",
             cancel_url=f"{base_url}/paypal/cancel?issue_id={issue_id}",
             description=f"Mendly job #{issue_id}: {q['vendor_name']}",
